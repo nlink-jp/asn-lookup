@@ -1,0 +1,21 @@
+# asn-lookup configuration.
+# Copy to ~/.config/asn-lookup/config.toml and fill in your token.
+# The token is a secret — do not commit a real value.
+
+[ipinfo]
+# Free token from https://ipinfo.io/signup . The IPINFO_TOKEN environment
+# variable overrides this value.
+token = "REPLACE_WITH_YOUR_IPINFO_TOKEN"
+
+# Override the Lite download URL (optional; defaults to the CSV endpoint).
+# lite_url = "https://ipinfo.io/data/ipinfo_lite.csv.gz"
+
+[db]
+# Override where the compact index is stored (optional).
+# path = "~/.local/share/asn-lookup/asndb.bin"
+
+[mcp]
+# Default output directory for file-mediated MCP results (large lookup_asn
+# outputs). Overridable per request via workspace_root, or the
+# ASN_LOOKUP_WORKSPACE environment variable.
+# workspace = "~/.local/state/asn-lookup/workspace"
