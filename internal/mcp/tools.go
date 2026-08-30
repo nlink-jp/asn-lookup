@@ -58,7 +58,6 @@ func (s *server) toolsList() any {
 						"asns":   strArray,
 						"limit":  map[string]any{"type": "integer", "description": "Prefixes per page (default 50). 0 means all of them — only safe for an AS you already know is small."},
 						"offset": map[string]any{"type": "integer", "description": "0-based index of the first prefix to return (default 0). Walk a large AS by adding limit each call while has_more is true."},
-						"format": map[string]any{"type": "string", "enum": []string{"cidr", "json"}, "description": "Format of the written prefix file (default cidr = one CIDR per line)."},
 					},
 				},
 			},
