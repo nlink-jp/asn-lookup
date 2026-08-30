@@ -43,16 +43,11 @@ ASN → the IP prefixes it announces in IPinfo Lite.
   `as_name`, `as_domain`, `prefix_count`, `v4_count`, `v6_count`, `offset`,
   `limit`, `has_more`, and `prefixes` — this page, always inline.
 
-## Paging, not files
+## Paging
 
 Some ASNs map to hundreds of thousands of prefixes (Cloudflare ≈ 590k), so
-`lookup_asn` hands them over a page at a time rather than all at once.
-
-It used to write the full list to a caller-supplied `workspace_root` and return
-the path. That made this server depend on you owning a filesystem it could name,
-and put the "too big" judgement in the one process that cannot know your context
-window. Now nothing is written: the server has no output directory and takes no
-path argument.
+`lookup_asn` hands them over a page at a time. No file is written and no path
+comes back.
 
 Walk a large AS by adding `limit` to `offset` while `has_more` is true.
 `prefix_count` is the true total, so you always know how far you have to go, and
