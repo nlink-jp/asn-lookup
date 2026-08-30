@@ -13,9 +13,3 @@ token = "REPLACE_WITH_YOUR_IPINFO_TOKEN"
 [db]
 # Override where the compact index is stored (optional).
 # path = "~/.local/share/asn-lookup/asndb.bin"
-
-[mcp]
-# Default output directory for file-mediated MCP results (large lookup_asn
-# outputs). Overridable per request via workspace_root, or the
-# ASN_LOOKUP_WORKSPACE environment variable.
-# workspace = "~/.local/state/asn-lookup/workspace"

@@ -22,6 +22,16 @@ const sampleCSV = `network,country,country_code,continent,continent_code,asn,as_
 8.8.8.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
 `
 
+// pagedCSV gives AS15169 five prefixes, so a page smaller than the AS can be
+// walked to the end — the property that replaced writing the list to a file.
+const pagedCSV = `network,country,country_code,continent,continent_code,asn,as_name,as_domain
+8.8.8.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
+8.8.9.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
+8.8.10.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
+8.8.11.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
+8.8.12.0/24,United States,US,North America,NA,AS15169,Google LLC,google.com
+`
+
 const gen = 1720000000
 
 type fakeFetcher struct{ csv string }
@@ -34,12 +44,14 @@ func (f fakeFetcher) Fetch(_ context.Context, _, _ string) (io.ReadCloser, error
 	return io.NopCloser(&buf), nil
 }
 
-func newEngine(t *testing.T, writeDB bool) *engine.Engine {
+func newEngine(t *testing.T, writeDB bool) *engine.Engine { return newEngineCSV(t, writeDB, sampleCSV) }
+
+func newEngineCSV(t *testing.T, writeDB bool, csv string) *engine.Engine {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "asndb.bin")
 	if writeDB {
 		var buf bytes.Buffer
-		if _, _, err := asndb.BuildFromCSV(strings.NewReader(sampleCSV), &buf, gen); err != nil {
+		if _, _, err := asndb.BuildFromCSV(strings.NewReader(csv), &buf, gen); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(dbPath, buf.Bytes(), 0o644); err != nil {
@@ -47,12 +59,11 @@ func newEngine(t *testing.T, writeDB bool) *engine.Engine {
 		}
 	}
 	cfg := &config.Config{
-		Token:     "tok",
-		LiteURL:   "https://x.test/lite.csv.gz",
-		DBPath:    dbPath,
-		Workspace: filepath.Join(t.TempDir(), "ws"),
+		Token:   "tok",
+		LiteURL: "https://x.test/lite.csv.gz",
+		DBPath:  dbPath,
 	}
-	e := engine.New(cfg, fakeFetcher{csv: sampleCSV})
+	e := engine.New(cfg, fakeFetcher{csv: csv})
 	e.Now = func() time.Time { return time.Unix(gen, 0) }
 	return e
 }
@@ -177,55 +188,66 @@ func TestToolUpdateThenStatus(t *testing.T) {
 	}
 }
 
-func TestLookupASNWritesFileWhenLarge(t *testing.T) {
-	e := newEngine(t, true)
-	wsRoot := t.TempDir()
-	// limit:0 forces every found ASN over the inline threshold.
-	req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":0,"format":"cidr","workspace_root":%q}}}`, wsRoot)
-	resps := drive(t, e, req)
-	text, isErr := callText(t, resps[0].Result)
-	if isErr {
-		t.Fatalf("unexpected error result: %s", text)
+// Paging is what replaced writing the prefix list to a file: every prefix must
+// be reachable, and no path-bearing field may survive in the result.
+func TestLookupASNPagingReachesEveryPrefix(t *testing.T) {
+	e := newEngineCSV(t, true, pagedCSV)
+	seen := map[string]bool{}
+	for offset := 0; offset < 6; offset += 2 {
+		req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":2,"offset":%d}}}`, offset)
+		text, isErr := callText(t, drive(t, e, req)[0].Result)
+		if isErr {
+			t.Fatalf("offset %d: %s", offset, text)
+		}
+		for _, gone := range []string{"prefixes_file", "truncated", "preview", "workspace"} {
+			if strings.Contains(text, gone) {
+				t.Errorf("result still carries %q — file mediation was not removed: %s", gone, text)
+			}
+		}
+		var entries []struct {
+			PrefixCount int      `json:"prefix_count"`
+			Offset      int      `json:"offset"`
+			HasMore     bool     `json:"has_more"`
+			Prefixes    []string `json:"prefixes"`
+		}
+		if err := json.Unmarshal([]byte(text), &entries); err != nil {
+			t.Fatalf("offset %d unmarshal: %v (%s)", offset, err, text)
+		}
+		e0 := entries[0]
+		if e0.PrefixCount != 5 {
+			t.Fatalf("prefix_count = %d, want the true total 5", e0.PrefixCount)
+		}
+		if want := offset+2 < 5; e0.HasMore != want {
+			t.Errorf("offset %d: has_more = %v, want %v", offset, e0.HasMore, want)
+		}
+		if len(e0.Prefixes) > 2 {
+			t.Errorf("offset %d returned %d prefixes, want at most the limit of 2", offset, len(e0.Prefixes))
+		}
+		for _, p := range e0.Prefixes {
+			seen[p] = true
+		}
 	}
-	var entries []map[string]any
-	if err := json.Unmarshal([]byte(text), &entries); err != nil {
-		t.Fatalf("unmarshal entries: %v (%s)", err, text)
-	}
-	e0 := entries[0]
-	if e0["truncated"] != true {
-		t.Errorf("expected truncated=true: %v", e0)
-	}
-	pf, _ := e0["prefixes_file"].(string)
-	if pf == "" || !strings.HasPrefix(pf, wsRoot) {
-		t.Fatalf("prefixes_file %q not under workspace %q", pf, wsRoot)
-	}
-	data, err := os.ReadFile(pf)
-	if err != nil {
-		t.Fatalf("read prefixes_file: %v", err)
-	}
-	if !strings.Contains(string(data), "8.8.8.0/24") {
-		t.Errorf("file content = %q", data)
+	if len(seen) != 5 {
+		t.Errorf("paging reached %d of 5 prefixes: %v", len(seen), seen)
 	}
 }
 
-func TestLookupASNBadWorkspaceGivesNote(t *testing.T) {
-	e := newEngine(t, true)
-	req := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":0,"workspace_root":"relative/not/absolute"}}}`
-	resps := drive(t, e, req)
-	text, _ := callText(t, resps[0].Result)
-	var entries []map[string]any
+// limit:0 means "all of them" — the caller opting out of paging for an AS it
+// already knows is small.
+func TestLookupASNLimitZeroReturnsEverything(t *testing.T) {
+	e := newEngineCSV(t, true, pagedCSV)
+	req := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":0}}}`
+	text, isErr := callText(t, drive(t, e, req)[0].Result)
+	if isErr {
+		t.Fatalf("unexpected error: %s", text)
+	}
+	var entries []struct {
+		HasMore  bool     `json:"has_more"`
+		Prefixes []string `json:"prefixes"`
+	}
 	json.Unmarshal([]byte(text), &entries)
-	e0 := entries[0]
-	if _, ok := e0["prefixes_file"]; ok {
-		t.Errorf("should not have written a file: %v", e0)
-	}
-	note, _ := e0["note"].(string)
-	if !strings.Contains(note, "workspace_root") {
-		t.Errorf("expected note about workspace_root, got %q", note)
-	}
-	// The lookup itself still succeeds with a preview + count.
-	if e0["prefix_count"].(float64) != 1 {
-		t.Errorf("prefix_count = %v", e0["prefix_count"])
+	if len(entries[0].Prefixes) != 5 || entries[0].HasMore {
+		t.Errorf("limit:0 must inline all 5 prefixes with has_more=false: %+v", entries[0])
 	}
 }
 
@@ -243,7 +265,7 @@ func TestInitializeInstructionsAndGetUsage(t *testing.T) {
 		t.Errorf("initialize instructions should mention get_usage: %q", init.Instructions)
 	}
 	text, isErr := callText(t, resps[1].Result)
-	if isErr || !strings.Contains(text, "Recovery table") || !strings.Contains(text, "workspace_root") {
+	if isErr || !strings.Contains(text, "Recovery table") || !strings.Contains(text, "offset") {
 		t.Errorf("get_usage manual incomplete: isErr=%v", isErr)
 	}
 }

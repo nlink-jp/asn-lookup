@@ -97,23 +97,20 @@ also advertises this via the MCP `instructions` field):
 
 | Tool | Arguments | Purpose |
 |------|-----------|---------|
-| `get_usage` | — | Operating manual: tools, workspace model, recovery table |
+| `get_usage` | — | Operating manual: tools, prefix paging, recovery table |
 | `lookup_ip` | `ip` (string) or `ips` (array) | IP → AS + country/continent |
-| `lookup_asn` | `asn`/`asns`, `limit`, `format`, `workspace_root`, `workspace_id` | ASN → prefix list (large results file-mediated) |
+| `lookup_asn` | `asn`/`asns`, `limit`, `offset` | ASN → one page of prefixes, always inline |
 | `update_db` | — | Download + rebuild the database (needs a token) |
 | `db_status` | — | Generation date, record counts, staleness |
 
-**Large ASN results are file-mediated.** Some ASNs map to hundreds of thousands
-of prefixes (e.g. Cloudflare has ~590k in IPinfo Lite). `lookup_asn` always
-returns a compact summary (`prefix_count`, `v4_count`, `v6_count`) plus an inline
-preview; when the full list exceeds `limit` (default 50) it is written to a file
-and only its path is returned (`prefixes_file`, `truncated: true`) — so a huge
-ASN never floods the model's context. Following the pattern used by
-voice-studio-mcp, the output directory is agent-provided: create a directory with
-your own file tools and pass it as `workspace_root` (essential in sandboxed
-environments); omit it to use the server default. All writes are confined to the
-workspace with `os.Root` (planted symlinks cannot escape). Choose the file
-`format` (`cidr` or `json`) per request.
+**Large ASN results are paged, not written to disk.** Some ASNs map to hundreds
+of thousands of prefixes (e.g. Cloudflare has ~590k in IPinfo Lite), so
+`lookup_asn` returns a compact summary (`prefix_count`, `v4_count`, `v6_count`)
+plus one page of prefixes inline: `limit` (default 50) bounds the page, `offset`
+walks the rest, and `has_more` says whether any are left. The server writes no
+files and takes no path argument, so it works against a client that has no
+filesystem of its own. `prefix_count` is always the true total — nothing is
+silently dropped.
 
 The database is not downloaded automatically: the CLI prints a hint to run
 `update`, while an MCP client can call `update_db` itself. A stale database
@@ -138,11 +135,6 @@ token = "your_token_here"
 
 [db]
 # path = "~/.local/share/asn-lookup/asndb.bin"
-
-[mcp]
-# Default output directory for file-mediated results (ASN_LOOKUP_WORKSPACE).
-# Callers may override per request with workspace_root.
-# workspace = "~/.local/state/asn-lookup/workspace"
 ```
 
 **Index location** — `~/.local/share/asn-lookup/asndb.bin`

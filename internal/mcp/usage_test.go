@@ -22,8 +22,8 @@ func TestUsageDocumentsEveryTool(t *testing.T) {
 	}
 	// Result fields and knobs that agents depend on must stay documented.
 	for _, term := range []string{
-		"prefixes_file", "truncated", "prefix_count",
-		"workspace_root", "IPINFO_TOKEN", "update_db",
+		"prefixes", "has_more", "prefix_count",
+		"offset", "IPINFO_TOKEN", "update_db",
 	} {
 		if !strings.Contains(usageMarkdown, term) {
 			t.Errorf("usage.md missing key term %q", term)

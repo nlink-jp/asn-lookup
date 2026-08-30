@@ -97,20 +97,17 @@ claude mcp add asn-lookup -- /path/to/asn-lookup mcp
 |------|------|------|
 | `get_usage` | — | 操作マニュアル: ツール・ワークスペースモデル・リカバリ表 |
 | `lookup_ip` | `ip`（文字列）または `ips`（配列） | IP → AS + 国/大陸 |
-| `lookup_asn` | `asn`/`asns`, `limit`, `format`, `workspace_root`, `workspace_id` | ASN → プレフィックス一覧（大きい結果はファイル経由） |
+| `lookup_asn` | `asn`/`asns`, `limit`, `offset` | ASN → プレフィックス 1 ページ（常にインライン） |
 | `update_db` | — | DB のダウンロード+再構築（トークン必要） |
 | `db_status` | — | 生成日・レコード数・鮮度 |
 
-**大きな ASN の結果はファイル経由**です。一部の ASN は数十万のプレフィックスに
-なります（例: Cloudflare は IPinfo Lite で約59万件）。`lookup_asn` は常にコンパクトな
-サマリ（`prefix_count`/`v4_count`/`v6_count`）+ インライン preview を返し、全件が
-`limit`（既定50）を超える場合は**ファイルに書き出してパスのみ返します**
-（`prefixes_file`, `truncated: true`）。これで巨大 ASN が AI のコンテキストを溢れ
-させません。voice-studio-mcp と同じく**出力先はエージェント指定**です。自分の
-ファイルツールでディレクトリを作り `workspace_root` に渡してください（サンドボックス
-環境では必須）。省略時はサーバー既定を使用。書き込みは `os.Root` でワークスペース内に
-封じ込め（仕込まれた symlink は脱出不可）。ファイル `format`（`cidr`/`json`）は
-リクエストごとに指定します。
+**大きな ASN の結果はページングで返します**（ファイルには書きません）。一部の ASN は
+数十万のプレフィックスになります（例: Cloudflare は IPinfo Lite で約59万件）。
+`lookup_asn` はコンパクトなサマリ（`prefix_count`/`v4_count`/`v6_count`）と
+プレフィックス 1 ページをインラインで返します。`limit`（既定50）が 1 ページの量を
+決め、`offset` で残りを辿り、`has_more` が続きの有無を示します。サーバーはファイルを
+書かずパス引数も取らないので、**ファイルシステムを持たないクライアントでも動作します**。
+`prefix_count` は常に実数なので、黙って落とすことはありません。
 
 DB は自動ダウンロードされません。CLI は `update` の実行を案内し、MCP クライアント
 は `update_db` を自分で呼べます。古い DB（30 日超）は警告のみで、自動更新はしません。
@@ -134,11 +131,6 @@ token = "your_token_here"
 
 [db]
 # path = "~/.local/share/asn-lookup/asndb.bin"
-
-[mcp]
-# ファイル経由結果の既定出力先（ASN_LOOKUP_WORKSPACE）。
-# 呼び出し側は workspace_root でリクエストごとに上書き可。
-# workspace = "~/.local/state/asn-lookup/workspace"
 ```
 
 **索引の場所** — `~/.local/share/asn-lookup/asndb.bin`

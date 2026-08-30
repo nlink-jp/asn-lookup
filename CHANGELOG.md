@@ -3,6 +3,33 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **`lookup_asn` pages its prefixes inline.** The MCP tool no longer writes the
+  full list to a file: it returns one page in `prefixes`, bounded by `limit`
+  (default 50) and walked with the new `offset`, with `has_more` saying whether
+  any are left. `prefix_count` is still the true total, so nothing is dropped.
+
+  Migration: replace a `workspace_root` call plus a file read with a loop that
+  advances `offset` by `limit` while `has_more` is true. `limit: 0` still means
+  "all of them", for an AS you already know is small.
+
+### Added
+
+- `lookup_asn` takes `offset`, and every result carries `offset`, `limit` and
+  `has_more`.
+
+### Removed
+
+- `lookup_asn`'s `workspace_root`, `workspace_id` and `format` arguments, and
+  the `prefixes_file` / `truncated` / `preview` / `note` result fields. `format`
+  only ever chose the encoding of the written file.
+- The `[mcp] workspace` config key and `ASN_LOOKUP_WORKSPACE`. The server has no
+  output directory: it touches no filesystem, so it works unchanged against a
+  client that has none.
+
 ## [0.1.0] - 2026-07-13
 
 ### Added

@@ -12,7 +12,6 @@ import (
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/engine"
-	"github.com/nlink-jp/asn-lookup/internal/workspace"
 )
 
 // defaultProtocolVersion is advertised when the client sends none.
@@ -58,7 +57,6 @@ func textResult(isErr bool, text string) toolResult {
 type server struct {
 	e       *engine.Engine
 	version string
-	ws      *workspace.Manager
 	db      *asndb.DB
 	dbMod   time.Time
 }
@@ -66,7 +64,7 @@ type server struct {
 // Serve runs the MCP protocol loop until in reaches EOF. It is safe to point in
 // at os.Stdin and out at os.Stdout; diagnostics must go to stderr only.
 func Serve(ctx context.Context, e *engine.Engine, version string, in io.Reader, out io.Writer) error {
-	s := &server{e: e, version: version, ws: workspace.NewManager(e.Cfg.Workspace)}
+	s := &server{e: e, version: version}
 	dec := json.NewDecoder(in)
 	enc := json.NewEncoder(out)
 	for {

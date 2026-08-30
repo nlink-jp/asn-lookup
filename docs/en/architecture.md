@@ -76,7 +76,6 @@ ipinfo  ── Fetcher interface (+ HTTP impl); mockable downloads
 engine  ── LoadDB / Update (atomic) / IsStale — the shared use-cases
 app     ── CLI shell (dispatch, commands, output formatting)
 mcp     ── stdio JSON-RPC 2.0 server exposing the same engine as tools
-workspace ─ agent-provided output dir + os.Root write containment
 ```
 
 The **engine** is the single place the CLI and the MCP server meet, so a change
@@ -92,25 +91,18 @@ network rows (Cloudflare has ~590k, dominated by geo-partitioned IPv6). Returnin
 that inline through an MCP tool would flood the model's context (tens of MB of
 JSON). Returning a naive truncation would silently hide most of the answer.
 
-So `lookup_asn` adopts the file-mediation pattern of voice-studio-mcp: it always
-returns a compact summary (`prefix_count`, `v4_count`, `v6_count`) plus an inline
-preview, and when the full list exceeds `limit` it writes the list to a file and
-returns only the path (`prefixes_file`, `truncated: true`, plus the total count —
-nothing is hidden silently).
+So `lookup_asn` hands the list over a page at a time: a compact summary
+(`prefix_count`, `v4_count`, `v6_count`) plus one page of prefixes, bounded by
+`limit` and walked with `offset`, with `has_more` saying whether any are left.
+`prefix_count` is always the true total, so nothing is hidden silently.
 
-Two design points matter:
-
-- **The output directory is caller-provided.** In a strongly sandboxed
-  environment (e.g. Cowork), the server can only write where the agent is allowed
-  to. So the workspace must be *communicated by the agent* per call
-  (`workspace_root`), not hardcoded under `$HOME`. A server default exists for
-  convenience but the agent path is the sandbox-safe route.
-- **Writes are contained.** An agent-writable workspace could contain planted
-  symlinks. All writes go through `os.Root` (`internal/workspace`), which is
-  kernel-enforced: a symlink component cannot redirect the write outside the
-  workspace. A lexical pre-check rejects absolute paths and `..` first for a
-  friendly error. The leaf filename is server-generated, so the caller never
-  controls it.
+It used to write the full list to a caller-supplied `workspace_root` and return
+the path. That was the wrong side of the wire twice over. It made the server
+depend on the client owning a filesystem it could name — a client speaking MCP
+over a transport with no shared disk could not read its own result. And it put
+the "too big for the model" judgement in the one process that cannot know the
+model's context window; only the client knows that number. The server now writes
+nothing, owns no output directory, and takes no path argument.
 
 `lookup_ip` stays inline: its output is proportional to the caller-supplied input
 list, so it cannot explode.

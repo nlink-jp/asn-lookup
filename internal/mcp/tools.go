@@ -5,13 +5,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/netip"
-	"strings"
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/engine"
-	"github.com/nlink-jp/asn-lookup/internal/workspace"
 )
 
 // usageMarkdown is the operating manual returned by the get_usage tool. Its
@@ -25,7 +22,7 @@ var usageMarkdown string
 // errors.
 const Instructions = "asn-lookup answers IP↔AS questions from a local IPinfo Lite database, fully offline. " +
 	"Call db_status first; if there is no database, call update_db (an ipinfo token must be configured). " +
-	"Large lookup_asn results are file-mediated: pass a writable workspace_root and read the returned prefixes_file. " +
+	"lookup_asn returns prefixes inline, a page at a time: walk a large AS with limit + offset. " +
 	"Call get_usage for the full tool reference and error-recovery table."
 
 // toolsList returns the advertised tool set with JSON Schema for each input.
@@ -35,7 +32,7 @@ func (s *server) toolsList() any {
 		"tools": []map[string]any{
 			{
 				"name":        "get_usage",
-				"description": "Return this server's operating manual (markdown): the tools, the workspace model for file-mediated results, the database lifecycle, and the error-recovery table. Call it once before first use.",
+				"description": "Return this server's operating manual (markdown): the tools, prefix paging, the database lifecycle, and the error-recovery table. Call it once before first use.",
 				"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 			},
 			{
@@ -52,17 +49,16 @@ func (s *server) toolsList() any {
 			{
 				"name": "lookup_asn",
 				"description": "List the IP prefixes announced by one or more ASNs (e.g. \"AS15169\" or 15169) from the local IPinfo Lite database. " +
-					"Always returns a summary (prefix_count, v4/v6 counts) and an inline preview. Large results are NOT inlined: the full prefix list is written to a file in the workspace and its path is returned (truncated=true). " +
-					"To receive that file in a sandboxed environment, create a directory with your own file tools and pass it as workspace_root.",
+					"Always returns a summary (prefix_count, v4/v6 counts) and one page of prefixes inline. " +
+					"A large AS holds thousands of prefixes, so the page is bounded by limit (default 50) and offset walks the rest; has_more says whether any are left.",
 				"inputSchema": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"asn":            map[string]any{"type": "string", "description": "A single ASN, as \"AS15169\" or \"15169\"."},
-						"asns":           strArray,
-						"limit":          map[string]any{"type": "integer", "description": "Max prefixes to inline before writing a file (default 50)."},
-						"format":         map[string]any{"type": "string", "enum": []string{"cidr", "json"}, "description": "Format of the written prefix file (default cidr = one CIDR per line)."},
-						"workspace_root": map[string]any{"type": "string", "description": "Absolute path to an agent-prepared directory for the output file; omit to use the server default."},
-						"workspace_id":   map[string]any{"type": "string", "description": "Optional single-segment subdirectory under the workspace root."},
+						"asn":    map[string]any{"type": "string", "description": "A single ASN, as \"AS15169\" or \"15169\"."},
+						"asns":   strArray,
+						"limit":  map[string]any{"type": "integer", "description": "Prefixes per page (default 50). 0 means all of them — only safe for an AS you already know is small."},
+						"offset": map[string]any{"type": "integer", "description": "0-based index of the first prefix to return (default 0). Walk a large AS by adding limit each call while has_more is true."},
+						"format": map[string]any{"type": "string", "enum": []string{"cidr", "json"}, "description": "Format of the written prefix file (default cidr = one CIDR per line)."},
 					},
 				},
 			},
@@ -147,36 +143,35 @@ func (s *server) toolLookupIP(args json.RawMessage) toolResult {
 	return jsonResult(entries)
 }
 
-// defaultASNPreview is how many prefixes are inlined before a file is written.
-const defaultASNPreview = 50
+// defaultASNPageSize bounds one page of prefixes. A tier-1 AS holds thousands,
+// and an unbounded default would put all of them in a model's context on the
+// first, most naive call.
+const defaultASNPageSize = 50
 
-// asnEntry is the file-mediated reverse-lookup result. Small results inline the
-// full Prefixes; large results inline a Preview and write the rest to a file.
+// asnEntry is one page of a reverse lookup. The whole prefix list is reachable
+// by paging: PrefixCount is the total, Offset/Limit say what this page covers,
+// and HasMore says whether to ask again. Nothing is written to disk.
 type asnEntry struct {
-	Input        string   `json:"input"`
-	Found        bool     `json:"found"`
-	ASN          uint32   `json:"asn"`
-	ASName       string   `json:"as_name,omitempty"`
-	ASDomain     string   `json:"as_domain,omitempty"`
-	PrefixCount  int      `json:"prefix_count"`
-	V4Count      int      `json:"v4_count"`
-	V6Count      int      `json:"v6_count"`
-	Truncated    bool     `json:"truncated"`
-	Prefixes     []string `json:"prefixes,omitempty"`
-	Preview      []string `json:"preview,omitempty"`
-	PrefixesFile string   `json:"prefixes_file,omitempty"`
-	Format       string   `json:"format,omitempty"`
-	Note         string   `json:"note,omitempty"`
+	Input       string   `json:"input"`
+	Found       bool     `json:"found"`
+	ASN         uint32   `json:"asn"`
+	ASName      string   `json:"as_name,omitempty"`
+	ASDomain    string   `json:"as_domain,omitempty"`
+	PrefixCount int      `json:"prefix_count"`
+	V4Count     int      `json:"v4_count"`
+	V6Count     int      `json:"v6_count"`
+	Offset      int      `json:"offset"`
+	Limit       int      `json:"limit"`
+	HasMore     bool     `json:"has_more"`
+	Prefixes    []string `json:"prefixes"`
 }
 
 func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 	var a struct {
-		ASN           string   `json:"asn"`
-		ASNs          []string `json:"asns"`
-		Limit         *int     `json:"limit"`
-		Format        string   `json:"format"`
-		WorkspaceRoot string   `json:"workspace_root"`
-		WorkspaceID   string   `json:"workspace_id"`
+		ASN    string   `json:"asn"`
+		ASNs   []string `json:"asns"`
+		Limit  *int     `json:"limit"`
+		Offset *int     `json:"offset"`
 	}
 	_ = json.Unmarshal(args, &a)
 
@@ -187,16 +182,13 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 	if len(inputs) == 0 {
 		return textResult(true, "provide 'asn' (string) or 'asns' (array of strings)")
 	}
-	format := a.Format
-	if format == "" {
-		format = "cidr"
-	}
-	if format != "cidr" && format != "json" {
-		return textResult(true, "format must be \"cidr\" or \"json\"")
-	}
-	preview := defaultASNPreview
+	limit := defaultASNPageSize
 	if a.Limit != nil && *a.Limit >= 0 {
-		preview = *a.Limit
+		limit = *a.Limit
+	}
+	offset := 0
+	if a.Offset != nil && *a.Offset > 0 {
+		offset = *a.Offset
 	}
 
 	db, err := s.database()
@@ -204,8 +196,6 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 		return dbErrorResult(err)
 	}
 
-	// Materialize the workspace lazily, only when a file must be written.
-	var ws *wsHandle
 	entries := make([]asnEntry, 0, len(inputs))
 	for _, in := range inputs {
 		num, ok := asndb.ParseASN(in)
@@ -224,56 +214,19 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 			Input: in, Found: true, ASN: num,
 			ASName: res.ASName, ASDomain: res.ASDomain,
 			PrefixCount: len(all), V4Count: v4, V6Count: v6,
+			Offset: offset, Limit: limit, Prefixes: []string{},
 		}
-		if len(all) <= preview {
-			e.Prefixes = all
-		} else {
-			e.Truncated = true
-			e.Preview = all[:preview]
-			e.Format = format
-			if ws == nil {
-				ws = s.ensureWorkspace(a.WorkspaceRoot, a.WorkspaceID)
+		if offset < len(all) {
+			end := len(all)
+			if limit > 0 && offset+limit < end {
+				end = offset + limit
 			}
-			if ws.err != nil {
-				e.Note = "full list not written: " + ws.err.Error() + " — pass a writable 'workspace_root'"
-			} else if path, werr := writePrefixFile(ws.ws, num, all, format); werr != nil {
-				e.Note = "full list not written: " + werr.Error()
-			} else {
-				e.PrefixesFile = path
-			}
+			e.Prefixes = all[offset:end]
+			e.HasMore = end < len(all)
 		}
 		entries = append(entries, e)
 	}
 	return jsonResult(entries)
-}
-
-// wsHandle memoizes a single workspace materialization (and its error) across
-// the ASNs in one call.
-type wsHandle struct {
-	ws  *workspace.Workspace
-	err error
-}
-
-func (s *server) ensureWorkspace(root, id string) *wsHandle {
-	ws, err := s.ws.EnsureIn(root, id)
-	return &wsHandle{ws: ws, err: err}
-}
-
-// writePrefixFile writes the full prefix list for an ASN into the workspace and
-// returns the absolute path.
-func writePrefixFile(ws *workspace.Workspace, asn uint32, prefixes []string, format string) (string, error) {
-	var data []byte
-	name := fmt.Sprintf("AS%d-prefixes.%s", asn, format)
-	if format == "json" {
-		b, err := json.MarshalIndent(prefixes, "", "  ")
-		if err != nil {
-			return "", err
-		}
-		data = b
-	} else {
-		data = []byte(strings.Join(prefixes, "\n") + "\n")
-	}
-	return ws.WriteFileAtomic(name, data)
 }
 
 func prefixStrings(ps []netip.Prefix) []string {

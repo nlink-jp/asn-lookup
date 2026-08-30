@@ -36,31 +36,27 @@ IP → AS + country/continent.
 ASN → the IP prefixes it announces in IPinfo Lite.
 - Arguments:
   - `asn` (string, e.g. `"AS15169"` or `"15169"`) **or** `asns` (array).
-  - `limit` (integer, default 50): max prefixes inlined before a file is written.
-  - `format` (`"cidr"` or `"json"`, default `cidr`): format of the written file.
-  - `workspace_root` (string): **absolute path** to a directory you prepared with
-    your own file tools; the full prefix file is written here. Omit to use the
-    server default (may be unwritable in a sandbox — prefer passing this).
-  - `workspace_id` (string): optional single-segment subdirectory under the root.
+  - `limit` (integer, default 50): prefixes per page. `0` means all of them —
+    only safe for an AS you already know is small.
+  - `offset` (integer, default 0): 0-based index of the first prefix to return.
 - Result: a JSON array, one object per input, each with `input`, `found`, `asn`,
-  `as_name`, `as_domain`, `prefix_count`, `v4_count`, `v6_count`, and:
-  - small result → `prefixes` (the full inline list), `truncated:false`.
-  - large result → `preview` (first `limit`), `truncated:true`, and
-    `prefixes_file` (absolute path to the full list). **Read that file** for the
-    complete set; do not expect the full list inline.
+  `as_name`, `as_domain`, `prefix_count`, `v4_count`, `v6_count`, `offset`,
+  `limit`, `has_more`, and `prefixes` — this page, always inline.
 
-## Workspace model (why files, not bytes)
+## Paging, not files
 
-Some ASNs map to hundreds of thousands of prefixes (Cloudflare ≈ 590k). Returning
-those inline would flood your context, so large `lookup_asn` results are written
-to a file and only the path is returned. `prefix_count` always reflects the full
-total — nothing is silently dropped.
+Some ASNs map to hundreds of thousands of prefixes (Cloudflare ≈ 590k), so
+`lookup_asn` hands them over a page at a time rather than all at once.
 
-The output directory is **caller-provided**: create a writable directory with
-your own file tools and pass it as `workspace_root`. This is required in
-sandboxed environments where the server cannot write under `$HOME`. Writes are
-confined to the workspace (kernel-enforced via `os.Root`); the filename is
-server-generated (`AS<n>-prefixes.<format>`), so you never control the leaf name.
+It used to write the full list to a caller-supplied `workspace_root` and return
+the path. That made this server depend on you owning a filesystem it could name,
+and put the "too big" judgement in the one process that cannot know your context
+window. Now nothing is written: the server has no output directory and takes no
+path argument.
+
+Walk a large AS by adding `limit` to `offset` while `has_more` is true.
+`prefix_count` is the true total, so you always know how far you have to go, and
+nothing is silently dropped.
 
 ## Recovery table
 
@@ -68,8 +64,8 @@ server-generated (`AS<n>-prefixes.<format>`), so you never control the leaf name
 |---|---|---|
 | `no local database …` | The index has not been built | Call `update_db` (needs a token) |
 | `no ipinfo token configured …` | `update_db` has no token | Ask the user to set `IPINFO_TOKEN` or `[ipinfo] token` |
-| `lookup_asn` → `truncated:true`, `prefixes_file` set | Full list written to a file | Read `prefixes_file` for all prefixes |
-| `lookup_asn` → `note` mentions `workspace_root` | The output file could not be written | Create a writable directory and pass its absolute path as `workspace_root` |
+| `lookup_asn` → `has_more:true` | More prefixes exist beyond this page | Re-request with `offset` advanced by `limit`; `prefix_count` is the total |
+| `lookup_asn` → the response is larger than you can hold | `limit` was too large for your context (or `0`) | Re-request with a smaller `limit` and page through |
 | `found:false`, `error:"invalid address"` | The input was not a valid IP | Fix the input |
 | `found:false` (no error) | Address/ASN not present in Lite (e.g. private IP) | Expected; no action |
 | `db_status` → `stale:true` | Database older than 30 days | Call `update_db` to refresh |

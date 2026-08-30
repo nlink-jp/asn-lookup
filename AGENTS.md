@@ -33,7 +33,6 @@ internal/engine/        Ties config+fetcher+index: LoadDB, Update (atomic), IsSt
 internal/app/           CLI: dispatch, ip/asn/update/doctor/mcp commands, output.
 internal/mcp/           Zero-dep stdio JSON-RPC 2.0 MCP server + tools.
   usage.md              Embedded get_usage manual (pinned by usage_test.go).
-internal/workspace/     Agent-provided output dir + os.Root write containment.
 ```
 
 ## Key design decisions
@@ -51,13 +50,14 @@ internal/workspace/     Agent-provided output dir + os.Root write containment.
 - **update is explicit.** The CLI never auto-downloads; it prints a hint. The MCP
   server exposes `update_db` so an AI can refresh the database itself.
 - **Engine is shared** by CLI and MCP so their behaviour cannot diverge.
-- **Large `lookup_asn` is file-mediated** (voice-studio-mcp pattern). Some ASNs
-  have hundreds of thousands of prefixes; returning them inline would flood the
-  model context. The MCP tool returns summary + preview inline and writes the
-  full list to an agent-provided `workspace_root` (default when omitted), then
-  returns the path. Writes go through `os.Root` so symlinks in an agent-writable
-  workspace cannot escape. The workspace MUST be agent-specifiable — a hardcoded
-  home-dir path breaks in sandboxes like Cowork.
+- **Large `lookup_asn` is paged, and the server has no filesystem.** Some ASNs
+  have hundreds of thousands of prefixes, so the tool returns a summary plus one
+  page (`limit`/`offset`/`has_more`, `prefix_count` = the true total). It used to
+  write the full list to an agent-provided `workspace_root`, which made the
+  server depend on the client owning a filesystem it could name and put the "too
+  big for the model" judgement in the one process that cannot know the model's
+  context window. Do not reintroduce file mediation: a page too large to hold is
+  a `limit` that was too large.
 
 ## Gotchas
 
@@ -73,11 +73,6 @@ internal/workspace/     Agent-provided output dir + os.Root write containment.
   reordering; only `network` is mandatory.
 - **Attribution:** IPinfo Lite is CC BY-SA 4.0. Keep the credit in `version`,
   `--help`, and the READMEs. Do not add DB redistribution.
-- **Workspace writes:** all `lookup_asn` file writes go through
-  `workspace.WriteFileAtomic` (os.Root). Never write MCP outputs with plain
-  `os.WriteFile` — that defeats symlink containment. The filename is
-  server-generated (`AS<n>-prefixes.<fmt>`), so callers never control the leaf
-  name. Requires Go 1.25+ `os.Root` (MkdirAll/WriteFile/Rename).
 - **get_usage manual:** `internal/mcp/usage.md` is embedded and returned by the
   `get_usage` tool; the initialize `instructions` field points clients to it.
   When you add/rename a tool or a result field, update usage.md — `usage_test.go`

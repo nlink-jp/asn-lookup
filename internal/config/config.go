@@ -17,10 +17,9 @@ const DefaultLiteURL = "https://ipinfo.io/data/ipinfo_lite.csv.gz"
 
 // Config holds resolved runtime settings.
 type Config struct {
-	Token     string // ipinfo download token (secret; never logged verbatim)
-	LiteURL   string // Lite CSV download URL
-	DBPath    string // path to the local compact index
-	Workspace string // default MCP output directory for file-mediated results
+	Token   string // ipinfo download token (secret; never logged verbatim)
+	LiteURL string // Lite CSV download URL
+	DBPath  string // path to the local compact index
 }
 
 // Load resolves configuration. If configPath is empty the default location
@@ -29,9 +28,8 @@ type Config struct {
 // wins over both.
 func Load(configPath, dbOverride, tokenOverride, urlOverride string) (*Config, error) {
 	cfg := &Config{
-		LiteURL:   DefaultLiteURL,
-		DBPath:    DefaultDBPath(),
-		Workspace: DefaultWorkspaceDir(),
+		LiteURL: DefaultLiteURL,
+		DBPath:  DefaultDBPath(),
 	}
 
 	if configPath == "" {
@@ -59,9 +57,6 @@ func Load(configPath, dbOverride, tokenOverride, urlOverride string) (*Config, e
 	}
 	if v := firstEnv("ASN_LOOKUP_LITE_URL"); v != "" {
 		cfg.LiteURL = v
-	}
-	if v := firstEnv("ASN_LOOKUP_WORKSPACE"); v != "" {
-		cfg.Workspace = v
 	}
 
 	// Explicit flag overrides win.
@@ -92,11 +87,6 @@ func applySections(cfg *Config, sections map[string]map[string]string) {
 			cfg.DBPath = expandHome(v)
 		}
 	}
-	if mcp := sections["mcp"]; mcp != nil {
-		if v := mcp["workspace"]; v != "" {
-			cfg.Workspace = expandHome(v)
-		}
-	}
 }
 
 // DefaultConfigPath returns the default config file location, honoring
@@ -122,19 +112,6 @@ func DefaultDBPath() string {
 		return "asndb.bin"
 	}
 	return filepath.Join(home, ".local", "share", "asn-lookup", "asndb.bin")
-}
-
-// DefaultWorkspaceDir returns the default MCP output directory, honoring
-// XDG_STATE_HOME (file-mediated results are reproducible, transient state).
-func DefaultWorkspaceDir() string {
-	if x := os.Getenv("XDG_STATE_HOME"); x != "" {
-		return filepath.Join(x, "asn-lookup", "workspace")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".local", "state", "asn-lookup", "workspace")
 }
 
 func firstEnv(names ...string) string {
