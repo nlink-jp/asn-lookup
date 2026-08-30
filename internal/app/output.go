@@ -128,7 +128,10 @@ func (t *ipTable) row(input string, r asndb.IPResult, found bool, invalid bool) 
 	}
 }
 
-func (t *ipTable) flush() { t.tw.Flush() }
+// The tabwriter drains to the CLI's own stdout: reporting a failed write
+// to the stream that just failed is circular, and the exit code already
+// carries the outcome (same reasoning as the fmt.Fprint* exclusion).
+func (t *ipTable) flush() { _ = t.tw.Flush() }
 
 // asnBlock renders a single `asn` result: a header line, then its prefixes.
 // limit<=0 prints all prefixes; countOnly prints only the header.

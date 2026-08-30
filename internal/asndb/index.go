@@ -119,13 +119,18 @@ func (b *Builder) Serialize(w io.Writer, generatedUnix int64) error {
 		}
 	}
 
+	// bufio.Writer records the first write error and returns it from
+	// Flush, so the individual writes below are checked collectively by
+	// the `return bw.Flush()` at the end of this function. That is the
+	// only reason discarding them here is safe — do not copy the pattern
+	// to a writer without sticky errors.
 	bw := bufio.NewWriter(w)
 	var scratch [21]byte
-	putU32 := func(v uint32) { binary.LittleEndian.PutUint32(scratch[:4], v); bw.Write(scratch[:4]) }
-	putU64 := func(v uint64) { binary.LittleEndian.PutUint64(scratch[:8], v); bw.Write(scratch[:8]) }
+	putU32 := func(v uint32) { binary.LittleEndian.PutUint32(scratch[:4], v); _, _ = bw.Write(scratch[:4]) }
+	putU64 := func(v uint64) { binary.LittleEndian.PutUint64(scratch[:8], v); _, _ = bw.Write(scratch[:8]) }
 
 	// Header.
-	bw.Write(magic[:])
+	_, _ = bw.Write(magic[:])
 	putU32(formatVersion)
 	putU64(uint64(generatedUnix))
 	putU32(uint32(len(b.records)))
@@ -134,7 +139,7 @@ func (b *Builder) Serialize(w io.Writer, generatedUnix int64) error {
 	putU32(uint32(strTab.Len()))
 
 	// String table.
-	bw.Write(strTab.Bytes())
+	_, _ = bw.Write(strTab.Bytes())
 
 	// Records: asn + 6 string refs (off,len).
 	for _, r := range refs {
@@ -150,14 +155,14 @@ func (b *Builder) Serialize(w io.Writer, generatedUnix int64) error {
 		binary.LittleEndian.PutUint32(scratch[0:4], e.start)
 		scratch[4] = e.bits
 		binary.LittleEndian.PutUint32(scratch[5:9], e.rec)
-		bw.Write(scratch[:9])
+		_, _ = bw.Write(scratch[:9])
 	}
 	// v6 entries: start(16) bits(1) rec(4).
 	for _, e := range b.v6 {
 		copy(scratch[0:16], e.start[:])
 		scratch[16] = e.bits
 		binary.LittleEndian.PutUint32(scratch[17:21], e.rec)
-		bw.Write(scratch[:21])
+		_, _ = bw.Write(scratch[:21])
 	}
 	return bw.Flush()
 }

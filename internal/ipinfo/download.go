@@ -55,7 +55,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL, token string) (io.ReadC
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("download %s: HTTP %d: %s", Redact(rawURL), resp.StatusCode, trimBody(body))
 	}
 	return resp.Body, nil

@@ -75,7 +75,7 @@ func (e *Engine) Update(ctx context.Context) (asndb.Stats, int, error) {
 	if err != nil {
 		return asndb.Stats{}, 0, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	var src io.Reader = body
 	if strings.HasSuffix(e.Cfg.LiteURL, ".gz") {
@@ -83,7 +83,7 @@ func (e *Engine) Update(ctx context.Context) (asndb.Stats, int, error) {
 		if gzErr != nil {
 			return asndb.Stats{}, 0, fmt.Errorf("gzip: %w", gzErr)
 		}
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 		src = gz
 	}
 
@@ -96,7 +96,9 @@ func (e *Engine) Update(ctx context.Context) (asndb.Stats, int, error) {
 		return asndb.Stats{}, 0, err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op after a successful rename
+	// No-op after a successful rename; a failure here leaves a temp file,
+	// which is not worth failing an otherwise successful update over.
+	defer func() { _ = os.Remove(tmpName) }()
 
 	stats, skipped, err := asndb.BuildFromCSV(src, tmp, e.now().Unix())
 	if cerr := tmp.Close(); err == nil {

@@ -33,8 +33,8 @@ type fakeFetcher struct{ csv string }
 func (f fakeFetcher) Fetch(_ context.Context, _, _ string) (io.ReadCloser, error) {
 	var buf bytes.Buffer
 	w := gzip.NewWriter(&buf)
-	io.WriteString(w, f.csv)
-	w.Close()
+	_, _ = io.WriteString(w, f.csv)
+	_ = w.Close()
 	return io.NopCloser(&buf), nil
 }
 

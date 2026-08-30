@@ -37,7 +37,7 @@ func Load(configPath, dbOverride, tokenOverride, urlOverride string) (*Config, e
 	}
 	if configPath != "" {
 		if f, err := os.Open(configPath); err == nil {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			sections, perr := parseTOML(f)
 			if perr != nil {
 				return nil, fmt.Errorf("parse config %s: %w", configPath, perr)

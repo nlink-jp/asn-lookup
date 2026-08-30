@@ -39,8 +39,8 @@ type fakeFetcher struct{ csv string }
 func (f fakeFetcher) Fetch(_ context.Context, _, _ string) (io.ReadCloser, error) {
 	var buf bytes.Buffer
 	w := gzip.NewWriter(&buf)
-	io.WriteString(w, f.csv)
-	w.Close()
+	_, _ = io.WriteString(w, f.csv)
+	_ = w.Close()
 	return io.NopCloser(&buf), nil
 }
 
@@ -128,7 +128,7 @@ func TestServeSequence(t *testing.T) {
 	var initRes struct {
 		ServerInfo struct{ Name string } `json:"serverInfo"`
 	}
-	json.Unmarshal(resps[0].Result, &initRes)
+	_ = json.Unmarshal(resps[0].Result, &initRes)
 	if initRes.ServerInfo.Name != "asn-lookup" {
 		t.Errorf("serverInfo.name = %q", initRes.ServerInfo.Name)
 	}
@@ -137,7 +137,7 @@ func TestServeSequence(t *testing.T) {
 	var listRes struct {
 		Tools []struct{ Name string } `json:"tools"`
 	}
-	json.Unmarshal(resps[1].Result, &listRes)
+	_ = json.Unmarshal(resps[1].Result, &listRes)
 	if len(listRes.Tools) != 5 {
 		t.Errorf("tools = %d, want 5", len(listRes.Tools))
 	}
@@ -245,7 +245,7 @@ func TestLookupASNLimitZeroReturnsEverything(t *testing.T) {
 		HasMore  bool     `json:"has_more"`
 		Prefixes []string `json:"prefixes"`
 	}
-	json.Unmarshal([]byte(text), &entries)
+	_ = json.Unmarshal([]byte(text), &entries)
 	if len(entries[0].Prefixes) != 5 || entries[0].HasMore {
 		t.Errorf("limit:0 must inline all 5 prefixes with has_more=false: %+v", entries[0])
 	}
@@ -260,7 +260,7 @@ func TestInitializeInstructionsAndGetUsage(t *testing.T) {
 	var init struct {
 		Instructions string `json:"instructions"`
 	}
-	json.Unmarshal(resps[0].Result, &init)
+	_ = json.Unmarshal(resps[0].Result, &init)
 	if !strings.Contains(init.Instructions, "get_usage") {
 		t.Errorf("initialize instructions should mention get_usage: %q", init.Instructions)
 	}

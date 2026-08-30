@@ -46,7 +46,7 @@ func TestFetchSuccess(t *testing.T) {
 			http.Error(w, "missing bearer", http.StatusForbidden)
 			return
 		}
-		io.WriteString(w, "payload-bytes")
+		_, _ = io.WriteString(w, "payload-bytes")
 	}))
 	defer srv.Close()
 
@@ -55,7 +55,7 @@ func TestFetchSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	body, _ := io.ReadAll(rc)
 	if string(body) != "payload-bytes" {
 		t.Errorf("body = %q", body)
