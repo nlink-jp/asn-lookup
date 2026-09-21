@@ -103,6 +103,13 @@ also advertises this via the MCP `instructions` field):
 | `update_db` | — | Download + rebuild the database (needs a token) |
 | `db_status` | — | Generation date, record counts, staleness |
 
+**Arguments are checked strictly.** A call carrying an argument a tool does not
+declare fails, naming it — `arguments: json: unknown field "offest"` — rather
+than running without it. A misspelt `offset` used to be dropped, which made
+every page of a large AS come back as the first one. Wrong-typed arguments are
+refused the same way, and nothing runs before the arguments decode. Omitting
+arguments entirely still means "none".
+
 **Large ASN results are paged, not written to disk.** Some ASNs map to hundreds
 of thousands of prefixes (e.g. Cloudflare has ~590k in IPinfo Lite), so
 `lookup_asn` returns a compact summary (`prefix_count`, `v4_count`, `v6_count`)

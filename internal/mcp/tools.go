@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -34,6 +35,32 @@ func obj(props map[string]any, required ...string) map[string]any {
 		s["required"] = required
 	}
 	return s
+}
+
+// decodeArgs decodes a tool's arguments strictly: an argument the tool does not
+// declare is refused by name, and a malformed argument object is refused rather
+// than read as an empty one. Every tool decodes through here.
+//
+// obj() above is only the declared half of org ADR-021 §4 — what a
+// schema-checking client refuses before the call. This is the half that
+// actually refuses, and it is needed because not every client checks the
+// schema. The `_ = json.Unmarshal` this replaces discarded the decode error as
+// well as the unknown field, so both defects were silent in the same way: a
+// misspelt `limit` returned the default page of a tier-1 AS as if it were the
+// page asked for, and `{"asn": 15169}` ran as if no AS had been named.
+func decodeArgs(raw json.RawMessage, into any) error {
+	raw = bytes.TrimSpace(raw)
+	// Omitted or null arguments mean the empty object, not an error: a tool
+	// whose arguments are all optional is legitimately called with none.
+	if len(raw) == 0 || string(raw) == "null" {
+		raw = []byte("{}")
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(into); err != nil {
+		return errors.New("arguments: " + err.Error())
+	}
+	return nil
 }
 
 // toolsList returns the advertised tool set with JSON Schema for each input.
@@ -90,14 +117,24 @@ func (s *server) toolsCall(ctx context.Context, params json.RawMessage) (toolRes
 	}
 	switch p.Name {
 	case "get_usage":
+		// No arguments — which still means "none", not "any".
+		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
+			return textResult(true, err.Error()), nil
+		}
 		return textResult(false, usageMarkdown), nil
 	case "lookup_ip":
 		return s.toolLookupIP(p.Arguments), nil
 	case "lookup_asn":
 		return s.toolLookupASN(p.Arguments), nil
 	case "update_db":
+		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
+			return textResult(true, err.Error()), nil
+		}
 		return s.toolUpdate(ctx), nil
 	case "db_status":
+		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
+			return textResult(true, err.Error()), nil
+		}
 		return s.toolStatus(), nil
 	default:
 		return toolResult{}, &rpcError{Code: -32602, Message: "unknown tool: " + p.Name}
@@ -118,7 +155,9 @@ func (s *server) toolLookupIP(args json.RawMessage) toolResult {
 		IP  string   `json:"ip"`
 		IPs []string `json:"ips"`
 	}
-	_ = json.Unmarshal(args, &a)
+	if err := decodeArgs(args, &a); err != nil {
+		return textResult(true, err.Error())
+	}
 	inputs := a.IPs
 	if a.IP != "" {
 		inputs = append([]string{a.IP}, inputs...)
@@ -177,7 +216,9 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 		Limit  *int     `json:"limit"`
 		Offset *int     `json:"offset"`
 	}
-	_ = json.Unmarshal(args, &a)
+	if err := decodeArgs(args, &a); err != nil {
+		return textResult(true, err.Error())
+	}
 
 	inputs := a.ASNs
 	if a.ASN != "" {

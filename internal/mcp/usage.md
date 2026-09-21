@@ -43,6 +43,16 @@ ASN → the IP prefixes it announces in IPinfo Lite.
   `as_name`, `as_domain`, `prefix_count`, `v4_count`, `v6_count`, `offset`,
   `limit`, `has_more`, and `prefixes` — this page, always inline.
 
+## Arguments are strict
+
+Every tool refuses an argument it does not declare, naming it:
+`arguments: json: unknown field "offest"`. A wrong-typed argument is refused the
+same way. Nothing runs before the arguments decode, so a rejected call reads no
+database and downloads nothing — fix the name or the type and call again. This
+is the enforcing half of the closed schemas (org ADR-021 §4); a misspelt
+`offset` used to be dropped, which made every page of a large AS come back as
+the first one.
+
 ## Paging
 
 Some ASNs map to hundreds of thousands of prefixes (Cloudflare ≈ 590k), so
@@ -57,6 +67,8 @@ nothing is silently dropped.
 
 | Symptom (result text) | What it means | What to do |
 |---|---|---|
+| `arguments: json: unknown field "…"` | An argument name this tool does not declare — usually a typo | Fix the spelling and call again; the named field is the offending one |
+| `arguments: json: cannot unmarshal …` | An argument of the wrong JSON type (an ASN must be a string, `limit`/`offset` integers) | Check the argument's type in the tool list above and call again |
 | `no local database …` | The index has not been built | Call `update_db` (needs a token) |
 | `no ipinfo token configured …` | `update_db` has no token | Ask the user to set `IPINFO_TOKEN` or `[ipinfo] token` |
 | `lookup_asn` → `has_more:true` | More prefixes exist beyond this page | Re-request with `offset` advanced by `limit`; `prefix_count` is the total |
