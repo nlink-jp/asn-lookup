@@ -24,7 +24,7 @@ can investigate IP addresses without hammering the ipinfo API.
 make build          # → dist/asn-lookup (signed on macOS)
 ```
 
-Requires Go 1.25+. Cross-compile all platforms with `make build-all`.
+Requires Go 1.27.4+. Cross-compile all platforms with `make build-all`.
 
 ## Quick start
 

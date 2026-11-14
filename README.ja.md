@@ -23,7 +23,7 @@
 make build          # → dist/asn-lookup（macOS では署名付き）
 ```
 
-Go 1.25 以上が必要です。全プラットフォーム向けは `make build-all`。
+Go 1.27.4 以上が必要です。全プラットフォーム向けは `make build-all`。
 
 ## クイックスタート
 
