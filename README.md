@@ -9,7 +9,7 @@ can investigate IP addresses without hammering the ipinfo API.
   country/continent.
 - **AS → IP**: given an ASN, return every IP prefix it announces.
 - **CLI + MCP**: the same engine drives an interactive CLI and a stdio MCP server
-  (`lookup_ip`, `lookup_asn`, `update_db`, `db_status`).
+  (`get_usage`, `lookup_ip`, `lookup_asn`, `update_db`, `db_status`).
 - **No third-party dependencies**: the standard library (`net/netip` + a
   self-contained on-disk index) and, for the MCP protocol, the organization's
   shared module [nlink-jp/mcp](https://github.com/nlink-jp/mcp), written on the

@@ -35,9 +35,13 @@ repository:
 2. **Options (policy §2)**: `Workers` 1 (the database cache has no lock), `QueueDepth` 256, a `slog` to stderr
    (Warn and above). Name, version and instructions as today.
 3. **Tool failures (policy §3)**: strict decoding through `decodeArgs` and the isError texts stay.
-4. **Behaviour that changes (policy §4)**: `tools/*` before initialize is -32602; `arguments` that is not an object
-   is -32602; `"id":null` is -32600; framing changes from `json.Decoder` to one message per line (16 MiB). An unknown
-   tool was -32602 already and stays so.
+4. **Behaviour that changes (policy §4)**: `tools/*` and unknown methods before initialize are -32602 (an unknown
+   method was -32601); `arguments` that is not an object is -32602; `"id":null` and a request without `"jsonrpc"` are
+   -32600; framing changes from `json.Decoder` to one message per line (16 MiB); a parse error or a batch no longer
+   ends the server (a batch gets -32600); a panic in a tool is answered -32603 and the server goes on (it crashed);
+   up to 256 calls wait behind a running one, more get -32603 "server busy". An unknown tool was -32602 already and
+   stays so.
+8. **Signals (policy §2)**: the `mcp` subcommand passes `Serve` a ctx cancelled by SIGINT and SIGTERM.
 5. **Cancellation (policy §5)**: `update_db` now stops when cancelled. The database is written to a temporary file
    and renamed (`engine.Update`), so a stop midway leaves no partial file.
 6. **Dependency**: `github.com/nlink-jp/mcp` is added. "Zero dependencies / standard library only" becomes "the
@@ -50,6 +54,13 @@ repository:
 - Protocol-layer updates arrive through the module.
 - Tests run through the module's `client`. Tests of protocol details (parse errors, unknown methods, version
   negotiation) went (the module tests them); a test against the three probe clients was added.
+
+## Defects found (each fixed in its own fix commit)
+
+- Argument names were matched case-insensitively (`{"ASN":...}` passed as `asn`). They are now matched exactly, as in
+  cert-lookup and vpn-lookup.
+- `mcp` served on `context.Background()`, so a SIGTERM during `update_db` ended the process with `asndb-*.tmp` left
+  beside the database (measured with v0.3.2). Signals now cancel the ctx.
 
 ## Alternatives considered
 

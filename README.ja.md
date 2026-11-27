@@ -8,7 +8,7 @@
 - **IP → AS**: IP から ASN・AS 名・AS ドメイン・国/大陸を返します。
 - **AS → IP**: ASN からその ASN が広告する IP プレフィックス一覧を返します。
 - **CLI + MCP**: 同一エンジンが対話 CLI と stdio MCP サーバー
-  （`lookup_ip` / `lookup_asn` / `update_db` / `db_status`）を駆動します。
+  （`get_usage` / `lookup_ip` / `lookup_asn` / `update_db` / `db_status`）を駆動します。
 - **サードパーティ製の依存なし**: 標準ライブラリ（`net/netip` + 自前オンディスク索引）と、
   MCP のプロトコルには、同じ規則で書かれた組織の共通モジュール
   [nlink-jp/mcp](https://github.com/nlink-jp/mcp) だけを使います。MMDB リーダーも設定ライブラリも使いません。
@@ -95,12 +95,12 @@ claude mcp add asn-lookup -- /path/to/asn-lookup mcp
 }
 ```
 
-ツール（まず `get_usage` でマニュアル/リカバリ表を取得。`initialize` の
-`instructions` でも案内されます）:
+ツール（まず `get_usage` でマニュアル/リカバリ表を取得。サーバーは MCP の
+`instructions` でもそう案内します）:
 
 | ツール | 引数 | 用途 |
 |------|------|------|
-| `get_usage` | — | 操作マニュアル: ツール・ワークスペースモデル・リカバリ表 |
+| `get_usage` | — | 操作マニュアル: ツール・プレフィックスのページング・リカバリ表 |
 | `lookup_ip` | `ip`（文字列）または `ips`（配列） | IP → AS + 国/大陸 |
 | `lookup_asn` | `asn`/`asns`, `limit`, `offset` | ASN → プレフィックス 1 ページ（常にインライン） |
 | `update_db` | — | DB のダウンロード+再構築（トークン必要） |

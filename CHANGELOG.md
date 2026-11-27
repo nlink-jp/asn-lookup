@@ -16,14 +16,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- Protocol details now follow the module: `tools/list` and `tools/call` before
-  `initialize` are refused with -32602; `arguments` that is not an object is
-  refused with -32602 before reaching the tool; a request with `"id":null` gets
-  -32600; messages are read one per line (up to 16 MiB) instead of as a JSON
-  stream; a parse error no longer ends the server; `notifications/cancelled`
-  now cancels the call (an `update_db` stopped midway leaves no partial file).
+- Protocol details now follow the module:
+  - `tools/list`, `tools/call` and unknown methods before `initialize` are
+    refused with -32602 (an unknown method was -32601);
+  - `arguments` that is not an object is refused with -32602 before reaching
+    the tool;
+  - a request with `"id":null`, or without `"jsonrpc":"2.0"`, gets -32600;
+  - messages are read one per line (up to 16 MiB) instead of as a JSON stream;
+  - a parse error or a batch no longer ends the server (a batch gets -32600);
+  - a panic in a tool is answered -32603 and the server goes on (it crashed);
+  - up to 256 calls wait behind a running one; more are refused with -32603
+    "server busy";
+  - `notifications/cancelled` now cancels the call (an `update_db` stopped
+    midway leaves no partial file).
+
   Requests piped in are still all answered before the server exits at end of
   input.
+
+### Fixed
+
+- An argument spelt in another case (`{"ASN": ...}`, `"Limit"`) was accepted
+  as the declared one; it is now refused by name.
+- SIGTERM or SIGINT during `update_db` ended the server with a temporary
+  `asndb-*.tmp` left beside the database; a signal now ends the server through
+  its context and the file is removed.
 
 ## [0.3.2] - 2026-11-27
 

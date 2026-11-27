@@ -43,7 +43,8 @@ internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras
 - **No MMDB.** The reverse lookup (ASN→prefixes) is impossible with an IP-keyed
   MMDB, so the CSV must be ingested regardless. Once ingested, forward lookup is
   served from the same data — MMDB adds nothing. Everything is one CSV-derived
-  index, keeping the binary dependency-free (`net/netip` handles CIDR/v4v6).
+  index, so the binary needs no third-party library (`net/netip` handles
+  CIDR/v4v6; the MCP protocol is the organization's nlink-jp/mcp).
 - **Reverse view is derived, not stored.** `LookupASN` scans the forward entries
   rather than keeping a second index. It cannot drift from `LookupIP`, and saves
   memory. The scan is O(n) but fine at this scale for interactive use.
@@ -100,7 +101,8 @@ internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras
   not add a `_ = json.Unmarshal` back, and do not add a compatibility shim: the
   ADR's one-release grace covers only the retired `workspace_root` spellings.
 - **get_usage manual:** `internal/mcp/usage.md` is embedded and returned by the
-  `get_usage` tool; the initialize `instructions` field points clients to it.
+  `get_usage` tool; the MCP `instructions` (sent when a client opens the
+  server: `initialize`, or `server/discover` in the modern era) points clients to it.
   When you add/rename a tool or a result field, update usage.md — `usage_test.go`
   fails if the manual omits a tool name or a documented key term.
 
