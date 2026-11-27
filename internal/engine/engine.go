@@ -107,6 +107,11 @@ func (e *Engine) Update(ctx context.Context) (asndb.Stats, int, error) {
 	if err != nil {
 		return asndb.Stats{}, skipped, err
 	}
+	// A cancellation that lands once the download is read still leaves the
+	// database as it was (server-migration §5).
+	if err := ctx.Err(); err != nil {
+		return asndb.Stats{}, skipped, err
+	}
 	if err := os.Rename(tmpName, e.Cfg.DBPath); err != nil {
 		return asndb.Stats{}, skipped, fmt.Errorf("install index: %w", err)
 	}
