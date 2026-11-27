@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- An `update_db` cancelled once its download had been read to the end still
+  installed the new database. It now stops before installing, and the
+  database stays as it was (found by the family-A review of the MCP
+  migration).
+
 ## [0.4.0] - 2026-11-28
 
 ### Added
