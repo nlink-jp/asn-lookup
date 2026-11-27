@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nlink-jp/mcp/client"
+
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/config"
 	"github.com/nlink-jp/asn-lookup/internal/engine"
@@ -182,5 +184,54 @@ func TestInitializeInstructionsAndGetUsage(t *testing.T) {
 	text, isErr := call(t, cl, "get_usage", "")
 	if isErr || !strings.Contains(text, "Recovery table") || !strings.Contains(text, "offset") {
 		t.Errorf("get_usage manual incomplete: isErr=%v", isErr)
+	}
+}
+
+// slowFetcher serves csv after delay, or gives up when its ctx is cancelled —
+// as the real fetcher does, which takes the ctx into its HTTP request.
+type slowFetcher struct {
+	csv   string
+	delay time.Duration
+}
+
+func (f slowFetcher) Fetch(ctx context.Context, _, _ string) (io.ReadCloser, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(f.delay):
+	}
+	return fakeFetcher{csv: f.csv}.Fetch(ctx, "", "")
+}
+
+// An update_db cancelled midway (notifications/cancelled) stops and leaves
+// the database it would have replaced as it was, with no temporary file
+// beside it (ADR-0001 §5; server-migration §5). Detaching the update from the
+// call's ctx would let it run on and rewrite the file, and fail here.
+func TestACancelledUpdateLeavesTheDatabaseAsItWas(t *testing.T) {
+	e := newEngine(t, true)
+	before, err := os.ReadFile(e.Cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Fetcher = slowFetcher{csv: pagedCSV, delay: 700 * time.Millisecond}
+	cl := openWith(t, e, client.Options{CancelNotice: true})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := cl.CallTool(ctx, "update_db", nil, nil); err == nil {
+		t.Fatal("the cancelled update_db returned a result")
+	}
+	time.Sleep(time.Second) // past the fetcher's delay: a detached update would have finished
+
+	after, err := os.ReadFile(e.Cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("the database changed although the update was cancelled")
+	}
+	left, _ := filepath.Glob(filepath.Join(filepath.Dir(e.Cfg.DBPath), "*.tmp"))
+	if len(left) != 0 {
+		t.Errorf("temporary files left beside the database: %v", left)
 	}
 }

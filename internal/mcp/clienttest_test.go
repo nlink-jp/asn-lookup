@@ -20,6 +20,12 @@ import (
 // handshake by hand.
 func open(t *testing.T, e *engine.Engine) *client.Client {
 	t.Helper()
+	return openWith(t, e, client.Options{})
+}
+
+// openWith is open with the client's options (CancelNotice, say).
+func openWith(t *testing.T, e *engine.Engine, opts client.Options) *client.Client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -33,13 +39,13 @@ func open(t *testing.T, e *engine.Engine) *client.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	octx, ocancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer ocancel()
-	cl, err := client.Open(octx, conn, client.Options{Client: mcp.Implementation{Name: "test", Version: "0"}})
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
+	// Registered before Open, so a failed open leaves no goroutine or pipe.
+	var cl *client.Client
 	t.Cleanup(func() {
+		if cl == nil {
+			kill()
+			return
+		}
 		_ = cl.Close()
 		select {
 		case err := <-done:
@@ -51,6 +57,14 @@ func open(t *testing.T, e *engine.Engine) *client.Client {
 		}
 		kill()
 	})
+	octx, ocancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer ocancel()
+	opts.Client = mcp.Implementation{Name: "test", Version: "0"}
+	c, err := client.Open(octx, conn, opts)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	cl = c
 	return cl
 }
 
