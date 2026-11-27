@@ -27,6 +27,10 @@ func TestUnknownArgumentIsRefusedByName(t *testing.T) {
 		{"db_status", `{"verbose":true}`, "verbose"},
 		{"update_db", `{"force":true}`, "force"},
 		{"get_usage", `{"topic":"paging"}`, "topic"},
+		// encoding/json matches names case-insensitively; the schema does not.
+		{"lookup_asn", `{"ASN":"AS15169"}`, "ASN"},
+		{"lookup_asn", `{"asn":"AS15169","Limit":1}`, "Limit"},
+		{"lookup_ip", `{"IP":"8.8.8.8"}`, "IP"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.field, func(t *testing.T) {
