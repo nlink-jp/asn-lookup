@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The MCP server speaks both eras of the protocol** (ADR-0001): the
+  2026-07-28 revision, whose clients probe with `server/discover`, as well as
+  the earlier `initialize` handshake (2025-11-25, 2025-06-18, 2024-11-05). The
+  protocol layer is now the organization's shared module nlink-jp/mcp
+  (organization ADR-030); the tools, their arguments and their results are
+  unchanged.
+
+### Changed
+
+- Protocol details now follow the module: `tools/list` and `tools/call` before
+  `initialize` are refused with -32602; `arguments` that is not an object is
+  refused with -32602 before reaching the tool; a request with `"id":null` gets
+  -32600; messages are read one per line (up to 16 MiB) instead of as a JSON
+  stream; a parse error no longer ends the server; `notifications/cancelled`
+  now cancels the call (an `update_db` stopped midway leaves no partial file).
+  Requests piped in are still all answered before the server exits at end of
+  input.
+
 ## [0.3.2] - 2026-11-27
 
 ### Changed

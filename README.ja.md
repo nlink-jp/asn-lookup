@@ -9,8 +9,9 @@
 - **AS → IP**: ASN からその ASN が広告する IP プレフィックス一覧を返します。
 - **CLI + MCP**: 同一エンジンが対話 CLI と stdio MCP サーバー
   （`lookup_ip` / `lookup_asn` / `update_db` / `db_status`）を駆動します。
-- **外部依存ゼロ**: 標準ライブラリのみ（`net/netip` + 自前オンディスク索引）。
-  MMDB リーダーも設定ライブラリも使いません。
+- **サードパーティ製の依存なし**: 標準ライブラリ（`net/netip` + 自前オンディスク索引）と、
+  MCP のプロトコルには、同じ規則で書かれた組織の共通モジュール
+  [nlink-jp/mcp](https://github.com/nlink-jp/mcp) だけを使います。MMDB リーダーも設定ライブラリも使いません。
 
 > **データ:** IPinfo Lite（<https://ipinfo.io/lite>）、ライセンスは
 > [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。IPinfo への
@@ -73,6 +74,10 @@ cat ips.txt | asn-lookup ip --json | jq 'select(.found) | .asn'
 `asn` では `--count` で件数のみ、`-n/--limit N` で表示プレフィックス数を制限できます。
 
 ## MCP サーバー
+
+サーバーは、プロトコルの新旧両方の時代を話します。2026-07-28 版（`server/discover` で探るクライアント）と、
+それより前の `initialize` の握手（2025-11-25・2025-06-18・2024-11-05）です。パイプで流し込んだ要求には、
+入力の終わりで終了する前にすべて答えます。
 
 MCP クライアントに登録します。Claude Code の場合:
 

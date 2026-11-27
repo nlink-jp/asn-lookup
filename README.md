@@ -10,8 +10,10 @@ can investigate IP addresses without hammering the ipinfo API.
 - **AS → IP**: given an ASN, return every IP prefix it announces.
 - **CLI + MCP**: the same engine drives an interactive CLI and a stdio MCP server
   (`lookup_ip`, `lookup_asn`, `update_db`, `db_status`).
-- **Zero external dependencies**: standard library only (`net/netip` + a
-  self-contained on-disk index). No MMDB reader, no config libraries.
+- **No third-party dependencies**: the standard library (`net/netip` + a
+  self-contained on-disk index) and, for the MCP protocol, the organization's
+  shared module [nlink-jp/mcp](https://github.com/nlink-jp/mcp), written on the
+  same rule. No MMDB reader, no config libraries.
 
 > **Data:** IPinfo Lite (<https://ipinfo.io/lite>), licensed
 > [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Attribution to
@@ -75,6 +77,11 @@ the batch). For `asn`, `--count` prints only the header/counts and `-n/--limit N
 caps the printed prefixes.
 
 ## MCP server
+
+The server speaks both eras of the protocol: the 2026-07-28 revision (clients
+that probe with `server/discover`) and the earlier `initialize` handshake
+(2025-11-25, 2025-06-18, 2024-11-05). Requests piped in are all answered before
+it exits at end of input.
 
 Register the server with an MCP client. For Claude Code:
 

@@ -18,7 +18,9 @@ make vuln            # govulncheck over the build; `make package` runs it first 
 make verify-release  # gate: notarized, fresh, runs at this version, clean linux archives (run before upload)
 ```
 
-Go 1.27.4+. **No external dependencies** — standard library only.
+Go 1.27.4+. **No third-party dependencies** — the standard library, plus
+nlink-jp modules written on the same rule (`github.com/nlink-jp/mcp`,
+organization ADR-030).
 
 ## Layout
 
@@ -32,7 +34,7 @@ internal/config/        Sectioned-TOML subset parser + env/flag resolution.
 internal/ipinfo/        Fetcher interface + HTTPFetcher; token redaction.
 internal/engine/        Ties config+fetcher+index: LoadDB, Update (atomic), IsStale.
 internal/app/           CLI: dispatch, ip/asn/update/doctor/mcp commands, output.
-internal/mcp/           Zero-dep stdio JSON-RPC 2.0 MCP server + tools.
+internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras; ADR-0001).
   usage.md              Embedded get_usage manual (pinned by usage_test.go).
 ```
 
@@ -61,6 +63,14 @@ internal/mcp/           Zero-dep stdio JSON-RPC 2.0 MCP server + tools.
   a `limit` that was too large.
 
 ## Gotchas
+
+- **The MCP protocol is nlink-jp/mcp's** (ADR-0001, organization ADR-030 §6).
+  `internal/mcp` never handles `initialize` or `server/discover` itself: `Serve`
+  registers `toolsList()` on a `server.ToolServer` and each handler calls
+  `toolsCall`. Tests drive the server through the module's `client` (see
+  `clienttest_test.go`) and against its three probe clients; do not write the
+  handshake by hand in a test. Before initialize, `tools/*` is -32602 — the
+  module's rule, not a defect.
 
 - **Flag order:** `ip`/`asn` accept flags interspersed with positional args via
   `parseInterspersed` (Go's `flag` otherwise stops at the first non-flag). Keep

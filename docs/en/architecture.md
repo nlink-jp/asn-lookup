@@ -24,8 +24,9 @@ Since the reverse query forces us to ingest the raw CSV anyway, the MMDB buys
 nothing: once the CSV is parsed, the forward query is served from the same data.
 So the tool ingests the CSV and builds **one** index that serves both
 directions. A welcome side effect: parsing CSV with `net/netip` needs no
-third-party library, so the binary has **zero external dependencies** — matching
-the house style of `nlk` and `mcp-guardian`.
+third-party library, so the binary has **no third-party dependencies** (the MCP
+protocol comes from the organization's module nlink-jp/mcp, written on the same
+rule; ADR-0001).
 
 ## The index
 
@@ -75,7 +76,7 @@ config  ── settings resolution (TOML subset + env + flags)
 ipinfo  ── Fetcher interface (+ HTTP impl); mockable downloads
 engine  ── LoadDB / Update (atomic) / IsStale — the shared use-cases
 app     ── CLI shell (dispatch, commands, output formatting)
-mcp     ── stdio JSON-RPC 2.0 server exposing the same engine as tools
+mcp     ── MCP tools exposing the same engine (protocol: nlink-jp/mcp, both eras)
 ```
 
 The **engine** is the single place the CLI and the MCP server meet, so a change
