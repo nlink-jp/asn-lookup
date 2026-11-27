@@ -230,6 +230,14 @@ func existsLabel(path string) string {
 
 // ---- mcp ------------------------------------------------------------------
 
+// notifyContext is signal.NotifyContext, and mcpStdin and mcpStdout the
+// process's streams; tests stand in for them.
+var (
+	notifyContext           = signal.NotifyContext
+	mcpStdin      io.Reader = os.Stdin
+	mcpStdout     io.Writer = os.Stdout
+)
+
 func cmdMCP(args []string, version string) int {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	var c commonFlags
@@ -246,9 +254,9 @@ func cmdMCP(args []string, version string) int {
 	// cleanup defers run (an update_db cut short removes its temporary file).
 	// With context.Background() a signal ended the process with the file left
 	// beside the database.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := notifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := mcp.Serve(ctx, e, version, os.Stdin, os.Stdout); err != nil {
+	if err := mcp.Serve(ctx, e, version, mcpStdin, mcpStdout); err != nil {
 		fmt.Fprintf(os.Stderr, "mcp: %v\n", err)
 		return 1
 	}
