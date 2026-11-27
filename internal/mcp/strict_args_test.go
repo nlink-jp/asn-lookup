@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -31,9 +30,8 @@ func TestUnknownArgumentIsRefusedByName(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.field, func(t *testing.T) {
-			e := newEngine(t, true)
-			req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tc.tool, tc.args)
-			text, isErr := callText(t, drive(t, e, req)[0].Result)
+			cl := open(t, newEngine(t, true))
+			text, isErr := call(t, cl, tc.tool, tc.args)
 			if !isErr {
 				t.Fatalf("%s accepted unknown argument %q: %s", tc.tool, tc.field, text)
 			}
@@ -60,15 +58,13 @@ func TestMalformedArgumentsAreRefused(t *testing.T) {
 		args string
 	}{
 		{"number for string", "lookup_ip", `{"ip":8}`},
-		{"array for object", "lookup_ip", `["8.8.8.8"]`},
 		{"number for string", "lookup_asn", `{"asn":15169}`},
 		{"string for integer", "lookup_asn", `{"asn":"AS15169","limit":"all"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.name, func(t *testing.T) {
-			e := newEngine(t, true)
-			req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tc.tool, tc.args)
-			text, isErr := callText(t, drive(t, e, req)[0].Result)
+			cl := open(t, newEngine(t, true))
+			text, isErr := call(t, cl, tc.tool, tc.args)
 			if !isErr {
 				t.Fatalf("%s accepted malformed arguments: %s", tc.tool, text)
 			}
@@ -82,14 +78,21 @@ func TestMalformedArgumentsAreRefused(t *testing.T) {
 	}
 }
 
+// Arguments that are not an object never reach a tool: the protocol layer
+// refuses them with -32602 (server-migration §4), before decodeArgs.
+func TestNonObjectArgumentsAreAProtocolError(t *testing.T) {
+	cl := open(t, newEngine(t, true))
+	if _, err := callErr(t, cl, "lookup_ip", `["8.8.8.8"]`); rpcCode(err) != -32602 {
+		t.Errorf("array arguments: err = %v, want -32602", err)
+	}
+}
+
 // TestOmittedArgumentsStillMeanNone pins the boundary of the change: strict
 // decoding must not turn a legitimately argument-less call into an error.
 func TestOmittedArgumentsStillMeanNone(t *testing.T) {
-	for _, args := range []string{``, `,"arguments":{}`, `,"arguments":null`} {
-		e := newEngine(t, true)
-		req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"db_status"%s}}`, args)
-		text, isErr := callText(t, drive(t, e, req)[0].Result)
-		if isErr {
+	cl := open(t, newEngine(t, true))
+	for _, args := range []string{``, `{}`, `null`} {
+		if text, isErr := call(t, cl, "db_status", args); isErr {
 			t.Errorf("db_status with arguments %q was refused: %s", args, text)
 		}
 	}

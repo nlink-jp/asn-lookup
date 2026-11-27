@@ -63,81 +63,76 @@ func decodeArgs(raw json.RawMessage, into any) error {
 	return nil
 }
 
-// toolsList returns the advertised tool set with JSON Schema for each input.
-func (s *server) toolsList() any {
+// toolsList returns the advertised tool set, in order, with JSON Schema for
+// each input. The protocol server registers it as is (server.go), and the
+// tests read it from here.
+func (s *server) toolsList() []map[string]any {
 	strArray := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-	return map[string]any{
-		"tools": []map[string]any{
-			{
-				"name":        "get_usage",
-				"description": "Return this server's operating manual (markdown): the tools, prefix paging, the database lifecycle, and the error-recovery table. Call it once before first use.",
-				"inputSchema": obj(map[string]any{}),
-			},
-			{
-				"name":        "lookup_ip",
-				"description": "Look up the AS (ASN, name, domain) and country/continent for one or more IP addresses using the local IPinfo Lite database.",
-				"inputSchema": obj(map[string]any{
-					"ip":  map[string]any{"type": "string", "description": "A single IPv4 or IPv6 address."},
-					"ips": strArray,
-				}),
-			},
-			{
-				"name": "lookup_asn",
-				"description": "List the IP prefixes announced by one or more ASNs (e.g. \"AS15169\" or 15169) from the local IPinfo Lite database. " +
-					"Always returns a summary (prefix_count, v4/v6 counts) and one page of prefixes inline. " +
-					"A large AS holds thousands of prefixes, so the page is bounded by limit (default 50) and offset walks the rest; has_more says whether any are left.",
-				"inputSchema": obj(map[string]any{
-					"asn":    map[string]any{"type": "string", "description": "A single ASN, as \"AS15169\" or \"15169\"."},
-					"asns":   strArray,
-					"limit":  map[string]any{"type": "integer", "description": "Prefixes per page (default 50). 0 means all of them — only safe for an AS you already know is small."},
-					"offset": map[string]any{"type": "integer", "description": "0-based index of the first prefix to return (default 0). Walk a large AS by adding limit each call while has_more is true."},
-				}),
-			},
-			{
-				"name":        "update_db",
-				"description": "Download the latest IPinfo Lite database and rebuild the local index. Requires an ipinfo token to be configured.",
-				"inputSchema": obj(map[string]any{}),
-			},
-			{
-				"name":        "db_status",
-				"description": "Report the local database's generation date, record counts, and whether it is stale.",
-				"inputSchema": obj(map[string]any{}),
-			},
+	return []map[string]any{
+		{
+			"name":        "get_usage",
+			"description": "Return this server's operating manual (markdown): the tools, prefix paging, the database lifecycle, and the error-recovery table. Call it once before first use.",
+			"inputSchema": obj(map[string]any{}),
+		},
+		{
+			"name":        "lookup_ip",
+			"description": "Look up the AS (ASN, name, domain) and country/continent for one or more IP addresses using the local IPinfo Lite database.",
+			"inputSchema": obj(map[string]any{
+				"ip":  map[string]any{"type": "string", "description": "A single IPv4 or IPv6 address."},
+				"ips": strArray,
+			}),
+		},
+		{
+			"name": "lookup_asn",
+			"description": "List the IP prefixes announced by one or more ASNs (e.g. \"AS15169\" or 15169) from the local IPinfo Lite database. " +
+				"Always returns a summary (prefix_count, v4/v6 counts) and one page of prefixes inline. " +
+				"A large AS holds thousands of prefixes, so the page is bounded by limit (default 50) and offset walks the rest; has_more says whether any are left.",
+			"inputSchema": obj(map[string]any{
+				"asn":    map[string]any{"type": "string", "description": "A single ASN, as \"AS15169\" or \"15169\"."},
+				"asns":   strArray,
+				"limit":  map[string]any{"type": "integer", "description": "Prefixes per page (default 50). 0 means all of them — only safe for an AS you already know is small."},
+				"offset": map[string]any{"type": "integer", "description": "0-based index of the first prefix to return (default 0). Walk a large AS by adding limit each call while has_more is true."},
+			}),
+		},
+		{
+			"name":        "update_db",
+			"description": "Download the latest IPinfo Lite database and rebuild the local index. Requires an ipinfo token to be configured.",
+			"inputSchema": obj(map[string]any{}),
+		},
+		{
+			"name":        "db_status",
+			"description": "Report the local database's generation date, record counts, and whether it is stale.",
+			"inputSchema": obj(map[string]any{}),
 		},
 	}
 }
 
-func (s *server) toolsCall(ctx context.Context, params json.RawMessage) (toolResult, *rpcError) {
-	var p struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return toolResult{}, &rpcError{Code: -32602, Message: "invalid params: " + err.Error()}
-	}
-	switch p.Name {
+// toolsCall dispatches one call by tool name and builds its result.
+func (s *server) toolsCall(ctx context.Context, name string, args json.RawMessage) toolResult {
+	switch name {
 	case "get_usage":
 		// No arguments — which still means "none", not "any".
-		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
-			return textResult(true, err.Error()), nil
+		if err := decodeArgs(args, &struct{}{}); err != nil {
+			return textResult(true, err.Error())
 		}
-		return textResult(false, usageMarkdown), nil
+		return textResult(false, usageMarkdown)
 	case "lookup_ip":
-		return s.toolLookupIP(p.Arguments), nil
+		return s.toolLookupIP(args)
 	case "lookup_asn":
-		return s.toolLookupASN(p.Arguments), nil
+		return s.toolLookupASN(args)
 	case "update_db":
-		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
-			return textResult(true, err.Error()), nil
+		if err := decodeArgs(args, &struct{}{}); err != nil {
+			return textResult(true, err.Error())
 		}
-		return s.toolUpdate(ctx), nil
+		return s.toolUpdate(ctx)
 	case "db_status":
-		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
-			return textResult(true, err.Error()), nil
+		if err := decodeArgs(args, &struct{}{}); err != nil {
+			return textResult(true, err.Error())
 		}
-		return s.toolStatus(), nil
+		return s.toolStatus()
 	default:
-		return toolResult{}, &rpcError{Code: -32602, Message: "unknown tool: " + p.Name}
+		// Not reached: the protocol layer refuses a tool it did not register.
+		return textResult(true, "unknown tool: "+name)
 	}
 }
 

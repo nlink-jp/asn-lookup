@@ -68,122 +68,47 @@ func newEngineCSV(t *testing.T, writeDB bool, csv string) *engine.Engine {
 	return e
 }
 
-// rawResp is a partial JSON-RPC response for assertions.
-type rawResp struct {
-	ID     json.RawMessage `json:"id"`
-	Result json.RawMessage `json:"result"`
-	Error  *rpcError       `json:"error"`
-}
-
-func drive(t *testing.T, e *engine.Engine, requests ...string) []rawResp {
-	t.Helper()
-	in := strings.NewReader(strings.Join(requests, "\n") + "\n")
-	var out bytes.Buffer
-	if err := Serve(context.Background(), e, "test-ver", in, &out); err != nil {
-		t.Fatalf("Serve: %v", err)
+// The tools over the module's client: the listing, a lookup each way, and
+// the status (the sequence a client runs at start).
+func TestToolsOverTheProtocol(t *testing.T) {
+	cl := open(t, newEngine(t, true))
+	if name := cl.Server().Name; name != "asn-lookup" {
+		t.Errorf("serverInfo.name = %q", name)
 	}
-	var resps []rawResp
-	dec := json.NewDecoder(&out)
-	for {
-		var r rawResp
-		if err := dec.Decode(&r); err == io.EOF {
-			break
-		} else if err != nil {
-			t.Fatalf("decode response: %v (buffer: %s)", err, out.String())
-		}
-		resps = append(resps, r)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	list, err := cl.ListTools(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return resps
-}
-
-// callText extracts the text content of a tools/call result.
-func callText(t *testing.T, result json.RawMessage) (string, bool) {
-	t.Helper()
-	var tr toolResult
-	if err := json.Unmarshal(result, &tr); err != nil {
-		t.Fatalf("unmarshal toolResult: %v", err)
+	if len(list.Tools) != 5 {
+		t.Errorf("tools = %d, want 5", len(list.Tools))
 	}
-	if len(tr.Content) == 0 {
-		t.Fatal("empty content")
-	}
-	return tr.Content[0].Text, tr.IsError
-}
-
-func TestServeSequence(t *testing.T) {
-	e := newEngine(t, true)
-	resps := drive(t, e,
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
-		`{"jsonrpc":"2.0","method":"notifications/initialized"}`, // no response expected
-		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169"}}}`,
-		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"db_status"}}`,
-		`{"jsonrpc":"2.0","id":6,"method":"ping"}`,
-	)
-	if len(resps) != 6 {
-		t.Fatalf("got %d responses, want 6 (notification must be silent)", len(resps))
-	}
-
-	// initialize
-	var initRes struct {
-		ServerInfo struct{ Name string } `json:"serverInfo"`
-	}
-	_ = json.Unmarshal(resps[0].Result, &initRes)
-	if initRes.ServerInfo.Name != "asn-lookup" {
-		t.Errorf("serverInfo.name = %q", initRes.ServerInfo.Name)
-	}
-
-	// tools/list
-	var listRes struct {
-		Tools []struct{ Name string } `json:"tools"`
-	}
-	_ = json.Unmarshal(resps[1].Result, &listRes)
-	if len(listRes.Tools) != 5 {
-		t.Errorf("tools = %d, want 5", len(listRes.Tools))
-	}
-
-	// lookup_ip
-	text, isErr := callText(t, resps[2].Result)
-	if isErr || !strings.Contains(text, "15169") || !strings.Contains(text, `"found": true`) {
+	if text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`); isErr || !strings.Contains(text, "15169") || !strings.Contains(text, `"found": true`) {
 		t.Errorf("lookup_ip text = %s (isErr=%v)", text, isErr)
 	}
-
-	// lookup_asn
-	text, _ = callText(t, resps[3].Result)
-	if !strings.Contains(text, "8.8.8.0/24") {
+	if text, _ := call(t, cl, "lookup_asn", `{"asn":"AS15169"}`); !strings.Contains(text, "8.8.8.0/24") {
 		t.Errorf("lookup_asn text = %s", text)
 	}
-
-	// db_status
-	text, _ = callText(t, resps[4].Result)
-	if !strings.Contains(text, `"records"`) {
+	if text, _ := call(t, cl, "db_status", ""); !strings.Contains(text, `"records"`) {
 		t.Errorf("db_status text = %s", text)
 	}
 }
 
 func TestToolsCallNoDBHint(t *testing.T) {
-	e := newEngine(t, false) // no DB file written
-	resps := drive(t, e,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}`,
-	)
-	text, isErr := callText(t, resps[0].Result)
+	cl := open(t, newEngine(t, false)) // no DB file written
+	text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`)
 	if !isErr || !strings.Contains(text, "update_db") {
 		t.Errorf("expected error result hinting update_db, got %s (isErr=%v)", text, isErr)
 	}
 }
 
 func TestToolUpdateThenStatus(t *testing.T) {
-	e := newEngine(t, false)
-	resps := drive(t, e,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"update_db"}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"db_status"}}`,
-	)
-	text, isErr := callText(t, resps[0].Result)
-	if isErr || !strings.Contains(text, `"updated": true`) {
+	cl := open(t, newEngine(t, false))
+	if text, isErr := call(t, cl, "update_db", ""); isErr || !strings.Contains(text, `"updated": true`) {
 		t.Errorf("update_db text = %s (isErr=%v)", text, isErr)
 	}
-	text, isErr = callText(t, resps[1].Result)
-	if isErr || !strings.Contains(text, `"records"`) {
+	if text, isErr := call(t, cl, "db_status", ""); isErr || !strings.Contains(text, `"records"`) {
 		t.Errorf("db_status after update = %s (isErr=%v)", text, isErr)
 	}
 }
@@ -191,11 +116,10 @@ func TestToolUpdateThenStatus(t *testing.T) {
 // Paging is what replaced writing the prefix list to a file: every prefix must
 // be reachable, and no path-bearing field may survive in the result.
 func TestLookupASNPagingReachesEveryPrefix(t *testing.T) {
-	e := newEngineCSV(t, true, pagedCSV)
+	cl := open(t, newEngineCSV(t, true, pagedCSV))
 	seen := map[string]bool{}
 	for offset := 0; offset < 6; offset += 2 {
-		req := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":2,"offset":%d}}}`, offset)
-		text, isErr := callText(t, drive(t, e, req)[0].Result)
+		text, isErr := call(t, cl, "lookup_asn", fmt.Sprintf(`{"asn":"AS15169","limit":2,"offset":%d}`, offset))
 		if isErr {
 			t.Fatalf("offset %d: %s", offset, text)
 		}
@@ -235,9 +159,8 @@ func TestLookupASNPagingReachesEveryPrefix(t *testing.T) {
 // limit:0 means "all of them" — the caller opting out of paging for an AS it
 // already knows is small.
 func TestLookupASNLimitZeroReturnsEverything(t *testing.T) {
-	e := newEngineCSV(t, true, pagedCSV)
-	req := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_asn","arguments":{"asn":"AS15169","limit":0}}}`
-	text, isErr := callText(t, drive(t, e, req)[0].Result)
+	cl := open(t, newEngineCSV(t, true, pagedCSV))
+	text, isErr := call(t, cl, "lookup_asn", `{"asn":"AS15169","limit":0}`)
 	if isErr {
 		t.Fatalf("unexpected error: %s", text)
 	}
@@ -252,50 +175,12 @@ func TestLookupASNLimitZeroReturnsEverything(t *testing.T) {
 }
 
 func TestInitializeInstructionsAndGetUsage(t *testing.T) {
-	e := newEngine(t, true)
-	resps := drive(t, e,
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_usage"}}`,
-	)
-	var init struct {
-		Instructions string `json:"instructions"`
+	cl := open(t, newEngine(t, true))
+	if !strings.Contains(cl.Instructions(), "get_usage") {
+		t.Errorf("initialize instructions should mention get_usage: %q", cl.Instructions())
 	}
-	_ = json.Unmarshal(resps[0].Result, &init)
-	if !strings.Contains(init.Instructions, "get_usage") {
-		t.Errorf("initialize instructions should mention get_usage: %q", init.Instructions)
-	}
-	text, isErr := callText(t, resps[1].Result)
+	text, isErr := call(t, cl, "get_usage", "")
 	if isErr || !strings.Contains(text, "Recovery table") || !strings.Contains(text, "offset") {
 		t.Errorf("get_usage manual incomplete: isErr=%v", isErr)
-	}
-}
-
-func TestUnknownMethod(t *testing.T) {
-	e := newEngine(t, true)
-	resps := drive(t, e, `{"jsonrpc":"2.0","id":9,"method":"bogus/method"}`)
-	if resps[0].Error == nil || resps[0].Error.Code != -32601 {
-		t.Errorf("expected -32601 method not found, got %+v", resps[0].Error)
-	}
-}
-
-func TestInitializeNegotiatesProtocolVersion(t *testing.T) {
-	cases := []struct{ params, want string }{
-		{`{"protocolVersion":"2025-11-25"}`, "2025-11-25"},
-		{`{"protocolVersion":"2025-06-18"}`, "2025-06-18"},
-		{`{"protocolVersion":"2024-11-05"}`, "2024-11-05"},
-		// 2025-03-26 requires accepting JSON-RPC batches, which this server does not.
-		{`{"protocolVersion":"2025-03-26"}`, "2025-11-25"},
-		// A revision the server does not satisfy must not be echoed back.
-		{`{"protocolVersion":"2026-07-28"}`, "2025-11-25"},
-		{`{"protocolVersion":""}`, "2025-11-25"},
-		{`{}`, "2025-11-25"},
-		{`not json`, "2025-11-25"},
-		{``, "2025-11-25"},
-	}
-	for _, c := range cases {
-		res := (&server{}).initializeResult(json.RawMessage(c.params)).(map[string]any)
-		if got := res["protocolVersion"]; got != c.want {
-			t.Errorf("initialize %s: protocolVersion = %v, want %s", c.params, got, c.want)
-		}
 	}
 }

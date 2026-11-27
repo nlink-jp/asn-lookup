@@ -9,10 +9,8 @@ import (
 // TestUsageDocumentsEveryTool keeps usage.md coherent with the advertised tool
 // set: a renamed or added tool that the manual does not mention fails here.
 func TestUsageDocumentsEveryTool(t *testing.T) {
-	s := &server{}
-	list := s.toolsList().(map[string]any)
-	tools, ok := list["tools"].([]map[string]any)
-	if !ok || len(tools) == 0 {
+	tools := (&server{}).toolsList()
+	if len(tools) == 0 {
 		t.Fatal("toolsList returned no tools")
 	}
 	for _, tl := range tools {
@@ -42,8 +40,7 @@ func TestUsageDocumentsEveryTool(t *testing.T) {
 // (DisallowUnknownFields), which refuses an unknown argument that arrives
 // anyway; TestUnknownArgumentIsRefusedByName covers it.
 func TestEveryToolSchemaIsValidAndClosed(t *testing.T) {
-	s := &server{}
-	b, err := json.Marshal(s.toolsList())
+	b, err := json.Marshal(map[string]any{"tools": (&server{}).toolsList()})
 	if err != nil {
 		t.Fatalf("marshal tool list: %v", err)
 	}
