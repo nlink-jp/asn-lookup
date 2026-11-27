@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-28
+
 ### Fixed
 
 - An `update_db` cancelled once its download had been read to the end still
