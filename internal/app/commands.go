@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
@@ -240,7 +242,13 @@ func cmdMCP(args []string, version string) int {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
-	if err := mcp.Serve(context.Background(), e, version, os.Stdin, os.Stdout); err != nil {
+	// SIGINT and SIGTERM cancel the server's ctx: it returns at once and the
+	// cleanup defers run (an update_db cut short removes its temporary file).
+	// With context.Background() a signal ended the process with the file left
+	// beside the database.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := mcp.Serve(ctx, e, version, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "mcp: %v\n", err)
 		return 1
 	}
