@@ -83,8 +83,13 @@ func TestToolsOverTheProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 5 {
-		t.Errorf("tools = %d, want 5", len(list.Tools))
+	var names []string
+	for _, tl := range list.Tools {
+		names = append(names, tl.Name)
+	}
+	// The listing keeps toolsList's order (get_usage first).
+	if got := strings.Join(names, ","); got != "get_usage,lookup_ip,lookup_asn,update_db,db_status" {
+		t.Errorf("tools = %s", got)
 	}
 	if text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`); isErr || !strings.Contains(text, "15169") || !strings.Contains(text, `"found": true`) {
 		t.Errorf("lookup_ip text = %s (isErr=%v)", text, isErr)

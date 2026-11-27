@@ -82,8 +82,11 @@ func (s *server) toolServer() (*mcpserver.ToolServer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tool %v: %w", def["name"], err)
 		}
-		name, _ := def["name"].(string)
-		desc, _ := def["description"].(string)
+		name, okName := def["name"].(string)
+		desc, okDesc := def["description"].(string)
+		if !okName || !okDesc {
+			return nil, fmt.Errorf("tool %v: name and description must be strings", def["name"])
+		}
 		if err := ts.AddTool(mcpserver.Tool{Name: name, Description: desc, InputSchema: schema}, s.handle); err != nil {
 			return nil, err
 		}

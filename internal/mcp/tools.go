@@ -21,9 +21,9 @@ import (
 //go:embed usage.md
 var usageMarkdown string
 
-// Instructions is the initialize-time hint (surfaced via the MCP `instructions`
-// field) that makes get_usage discoverable and steers clients away from common
-// errors.
+// Instructions is the hint a client receives when it opens the server (the MCP
+// `instructions` field, in initialize or server/discover): it makes get_usage
+// discoverable and steers clients away from common errors.
 const Instructions = "asn-lookup answers IP↔AS questions from a local IPinfo Lite database, fully offline. " +
 	"Call db_status first; if there is no database, call update_db (an ipinfo token must be configured). " +
 	"lookup_asn returns prefixes inline, a page at a time: walk a large AS with limit + offset. " +

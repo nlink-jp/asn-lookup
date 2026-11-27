@@ -93,6 +93,9 @@ func TestNonObjectArgumentsAreAProtocolError(t *testing.T) {
 
 // TestOmittedArgumentsStillMeanNone pins the boundary of the change: strict
 // decoding must not turn a legitimately argument-less call into an error.
+// Over the protocol an omitted or null `arguments` reaches the tool as {} (the
+// module and its client replace it); decodeArgs's own empty and null branch
+// covers a caller that hands it raw bytes.
 func TestOmittedArgumentsStillMeanNone(t *testing.T) {
 	cl := open(t, newEngine(t, true))
 	for _, args := range []string{``, `{}`, `null`} {
