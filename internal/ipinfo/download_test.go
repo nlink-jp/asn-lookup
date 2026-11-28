@@ -115,3 +115,13 @@ func TestACancelledFetchIsStillACancellation(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A request that cannot be built is named by the redacted URL too (it is
+// built from the URL with the token in it).
+func TestARequestThatCannotBeBuiltIsRedacted(t *testing.T) {
+	var noContext context.Context // NewRequestWithContext refuses a nil context
+	_, err := NewHTTPFetcher().Fetch(noContext, closedURL(t), "secret-tok-123")
+	if err == nil || strings.Contains(err.Error(), "secret-tok-123") || !strings.HasPrefix(err.Error(), "download ") {
+		t.Errorf("err = %v", err)
+	}
+}

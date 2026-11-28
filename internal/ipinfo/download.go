@@ -45,20 +45,14 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL, token string) (io.ReadC
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
 	if err != nil {
-		return nil, err
+		return nil, fetchError(rawURL, err)
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		// *url.Error carries the whole request URL, token included: keep only
-		// its cause (wrapped, so a cancellation still reads as one).
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
-		return nil, fmt.Errorf("download %s: %w", Redact(rawURL), err)
+		return nil, fetchError(rawURL, err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -66,6 +60,18 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL, token string) (io.ReadC
 		return nil, fmt.Errorf("download %s: HTTP %d: %s", Redact(rawURL), resp.StatusCode, trimBody(body))
 	}
 	return resp.Body, nil
+}
+
+// fetchError names the download by its redacted URL. A *url.Error carries the
+// whole request URL, token included, so only its cause is kept (wrapped, so a
+// cancellation still reads as one). Every error Fetch returns after the token
+// is in the URL goes through here.
+func fetchError(rawURL string, err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	return fmt.Errorf("download %s: %w", Redact(rawURL), err)
 }
 
 // withToken appends the token as a query parameter.
