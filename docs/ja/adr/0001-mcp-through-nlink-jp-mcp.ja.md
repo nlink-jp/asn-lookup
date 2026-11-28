@@ -21,6 +21,8 @@
 
 ## Decision
 
+> 決定 1（`mcp.Serve` の形を残す）と 3（`decodeArgs`・isError の平文）は、ADR-0002 で置き換えた。サーバは `mcp.New` と mcptool の `serve.Run` で動き、引数は mcptool が読み、失敗はコードつきの JSON になる。
+
 共通の方針（nlink-jp/mcp の `docs/ja/server-migration.ja.md`、v0.3.0）に従う。そのうえで、このリポに当てはまる
 項目を次のように決める。
 

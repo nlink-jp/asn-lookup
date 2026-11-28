@@ -25,6 +25,8 @@ servers branched from copies of the same hand-written layer; asn-lookup is the r
 
 ## Decision
 
+> Decisions 1 (`mcp.Serve` keeps its shape) and 3 (`decodeArgs`, the plain-text isError) are superseded by ADR-0002: the server runs through `mcp.New` and mcptool's `serve.Run`, mcptool decodes the arguments, and failures are JSON with codes.
+
 Follow the common policy (nlink-jp/mcp's `docs/en/server-migration.md`, v0.3.0), with these items for this
 repository:
 
