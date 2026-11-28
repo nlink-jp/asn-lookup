@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/nlink-jp/mcptool"
 	"io"
 	"os"
 	"path/filepath"
@@ -249,5 +251,61 @@ func TestACancelledUpdateLeavesTheDatabaseAsItWas(t *testing.T) {
 	left, _ := filepath.Glob(filepath.Join(filepath.Dir(e.Cfg.DBPath), "*.tmp"))
 	if len(left) != 0 {
 		t.Errorf("temporary files left beside the database: %v", left)
+	}
+}
+
+// countingFetcher counts its calls.
+type countingFetcher struct {
+	n   *int
+	csv string
+}
+
+func (f countingFetcher) Fetch(ctx context.Context, u, tok string) (io.ReadCloser, error) {
+	*f.n++
+	return fakeFetcher{csv: f.csv}.Fetch(ctx, u, tok)
+}
+
+// A refused call does nothing (ADR-0002 §4): update_db with an argument it
+// does not declare downloads nothing and leaves the database as it was.
+func TestARefusedCallDoesNothing(t *testing.T) {
+	e := newEngine(t, true)
+	before, err := os.ReadFile(e.Cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	e.Fetcher = countingFetcher{n: &calls, csv: pagedCSV}
+	if te := toolErr(t, open(t, e), "update_db", `{"force":true}`); te.Code != mcptool.CodeInvalidArguments {
+		t.Fatalf("%+v", te)
+	}
+	after, _ := os.ReadFile(e.Cfg.DBPath)
+	if calls != 0 || !bytes.Equal(before, after) {
+		t.Errorf("a refused update_db fetched %d times; database changed: %v", calls, !bytes.Equal(before, after))
+	}
+}
+
+// A database that exists but cannot be read is database_error (ADR-0002).
+func TestAnUnreadableDatabaseIsDatabaseError(t *testing.T) {
+	e := newEngine(t, false)
+	if err := os.WriteFile(e.Cfg.DBPath, []byte("not an index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if te := toolErr(t, open(t, e), "db_status", ""); te.Code != CodeDatabaseError {
+		t.Errorf("%+v", te)
+	}
+}
+
+type failingFetcher struct{}
+
+func (failingFetcher) Fetch(context.Context, string, string) (io.ReadCloser, error) {
+	return nil, errors.New("upstream answered HTTP 503")
+}
+
+// A failure other than a missing token is update_failed, with its reason.
+func TestAFailedDownloadIsUpdateFailed(t *testing.T) {
+	e := newEngine(t, true)
+	e.Fetcher = failingFetcher{}
+	if te := toolErr(t, open(t, e), "update_db", ""); te.Code != CodeUpdateFailed || !strings.Contains(te.Message, "HTTP 503") {
+		t.Errorf("%+v", te)
 	}
 }
