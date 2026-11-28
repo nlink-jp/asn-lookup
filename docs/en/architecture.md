@@ -25,8 +25,8 @@ nothing: once the CSV is parsed, the forward query is served from the same data.
 So the tool ingests the CSV and builds **one** index that serves both
 directions. A welcome side effect: parsing CSV with `net/netip` needs no
 third-party library, so the binary has **no third-party dependencies** (the MCP
-protocol comes from the organization's module nlink-jp/mcp, written on the same
-rule; ADR-0001).
+protocol and tool conventions come from the organization's modules nlink-jp/mcp
+and nlink-jp/mcptool, written on the same rule; ADR-0001, ADR-0002).
 
 ## The index
 
@@ -76,7 +76,7 @@ config  ── settings resolution (TOML subset + env + flags)
 ipinfo  ── Fetcher interface (+ HTTP impl); mockable downloads
 engine  ── LoadDB / Update (atomic) / IsStale — the shared use-cases
 app     ── CLI shell (dispatch, commands, output formatting)
-mcp     ── MCP tools exposing the same engine (protocol: nlink-jp/mcp, both eras)
+mcp     ── MCP tools exposing the same engine (conventions: nlink-jp/mcptool; protocol: nlink-jp/mcp, both eras)
 ```
 
 The **engine** is the single place the CLI and the MCP server meet, so a change

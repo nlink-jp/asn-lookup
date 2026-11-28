@@ -19,7 +19,8 @@ make verify-release  # gate: notarized, fresh, runs at this version, clean linux
 ```
 
 Go 1.27.4+. **No third-party dependencies** — the standard library, plus
-nlink-jp modules written on the same rule (`github.com/nlink-jp/mcp`,
+nlink-jp modules written on the same rule (`github.com/nlink-jp/mcp` and
+`github.com/nlink-jp/mcptool`,
 organization ADR-030).
 
 ## Layout
@@ -34,7 +35,7 @@ internal/config/        Sectioned-TOML subset parser + env/flag resolution.
 internal/ipinfo/        Fetcher interface + HTTPFetcher; token redaction.
 internal/engine/        Ties config+fetcher+index: LoadDB, Update (atomic), IsStale.
 internal/app/           CLI: dispatch, ip/asn/update/doctor/mcp commands, output.
-internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras; ADR-0001).
+internal/mcp/           MCP tools on nlink-jp/mcptool (ADR-0002) over nlink-jp/mcp (both eras; ADR-0001).
   usage.md              Embedded get_usage manual (pinned by usage_test.go).
 ```
 
@@ -44,7 +45,8 @@ internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras
   MMDB, so the CSV must be ingested regardless. Once ingested, forward lookup is
   served from the same data — MMDB adds nothing. Everything is one CSV-derived
   index, so the binary needs no third-party library (`net/netip` handles
-  CIDR/v4v6; the MCP protocol is the organization's nlink-jp/mcp).
+  CIDR/v4v6; the MCP protocol and tool conventions are the organization's
+  nlink-jp/mcp and nlink-jp/mcptool).
 - **Reverse view is derived, not stored.** `LookupASN` scans the forward entries
   rather than keeping a second index. It cannot drift from `LookupIP`, and saves
   memory. The scan is O(n) but fine at this scale for interactive use.
@@ -65,13 +67,15 @@ internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras
 
 ## Gotchas
 
-- **The MCP protocol is nlink-jp/mcp's** (ADR-0001, organization ADR-030 §6).
-  `internal/mcp` never handles `initialize` or `server/discover` itself: `Serve`
-  registers `toolsList()` on a `server.ToolServer` and each handler calls
-  `toolsCall`. Tests drive the server through the module's `client` (see
-  `clienttest_test.go`) and against its three probe clients; do not write the
-  handshake by hand in a test. Before initialize, `tools/*` is -32602 — the
-  module's rule, not a defect.
+- **The MCP protocol is nlink-jp/mcp's and the tool conventions
+  nlink-jp/mcptool's** (ADR-0001, ADR-0002; organization ADR-030, ADR-031).
+  `internal/mcp` registers each tool with `mcptool.Add` (arguments decoded
+  into a struct before the handler runs) or `AddNoArgs`; a handler returns a
+  value, `mcptool.Text`, or an `*mcptool.Error` with a code from `codes.go`.
+  `cmd mcp` runs it with `serve.Run`. Tests use `mcptool/tooltest` (`Open`,
+  `OpenWith`, `ProbeMatrix`, `SchemaContract`); do not write the handshake or
+  a decoder by hand. A struct's fields and its schema's properties must name
+  the same set, or registration fails.
 
 - **Flag order:** `ip`/`asn` accept flags interspersed with positional args via
   `parseInterspersed` (Go's `flag` otherwise stops at the first non-flag). Keep

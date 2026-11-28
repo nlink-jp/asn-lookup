@@ -25,12 +25,13 @@ internal/config/        Sectioned-TOML subset + env/flag resolution
 internal/ipinfo/        Fetcher interface + HTTPFetcher (token redaction)
 internal/engine/        LoadDB / Update (atomic) / IsStale — shared by CLI & MCP
 internal/app/           Dispatch + ip/asn/update/doctor/mcp + output formatting
-internal/mcp/           MCP tools on nlink-jp/mcp's server.ToolServer (both eras; ADR-0001)
+internal/mcp/           MCP tools on nlink-jp/mcptool (conventions; ADR-0002) over nlink-jp/mcp (both eras; ADR-0001)
 ```
 
 Core logic takes io.Reader/io.Writer and injected dependencies for testability.
 **No third-party dependencies** — the standard library, plus nlink-jp modules
-written on the same rule (`github.com/nlink-jp/mcp`, organization ADR-030). See
+written on the same rule (`github.com/nlink-jp/mcp` and `github.com/nlink-jp/mcptool`,
+organization ADR-030 and ADR-031). See
 [docs/en/architecture.md](docs/en/architecture.md) for the "why".
 
 ## Key conventions
