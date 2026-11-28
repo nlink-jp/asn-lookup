@@ -32,10 +32,14 @@ All notable changes to this project are documented here. The format follows
 - `lookup_asn` answered `"prefixes": null` for an ASN it did not find (or
   could not parse). It now answers `"prefixes": []`, as for a found one, so
   `prefixes` is always an array.
-- A failed `update_db` download (a refused connection, a timeout) could
-  return an error quoting the whole request URL, ipinfo token included. The
-  error now names the redacted URL and the cause only; a cancellation still
-  reads as one.
+
+### Security
+
+- A failed download (a refused connection, a timeout) in `update_db` and in
+  `asn-lookup update` could print an error quoting the whole request URL,
+  ipinfo token included — in the MCP tool's message and on the CLI's stderr.
+  The error now names the redacted URL and the cause only; a cancellation
+  still reads as one.
 
 ## [0.4.1] - 2026-11-28
 
