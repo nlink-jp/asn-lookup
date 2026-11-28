@@ -89,21 +89,18 @@ internal/mcp/           MCP tools on nlink-jp/mcptool (ADR-0002) over nlink-jp/m
   reordering; only `network` is mandatory.
 - **Attribution:** IPinfo Lite is CC BY-SA 4.0. Keep the credit in `version`,
   `--help`, and the READMEs. Do not add DB redistribution.
-- **Tool schemas are closed and the decoder enforces it.** Every `inputSchema`
-  is built by `obj()` in `internal/mcp/tools.go`, which sets
-  `additionalProperties: false` (org ADR-021 §10), and
-  `TestEveryToolSchemaIsValidAndClosed` fails if a tool escapes it — so build a
-  new schema with `obj()`, not a map literal. The flag is only the *declared*
-  half; the enforcing half is `decodeArgs()` beside it
-  (`json.Decoder.DisallowUnknownFields`), which every tool handler decodes
-  through, including the argument-less ones. **A call carrying an argument this
-  server does not declare now fails, naming the field, instead of being
-  silently ignored** — deliberate, per ADR-021 §4, because the schema says what
-  is allowed and the decoder is what actually refuses. `decodeArgs` also stops
-  discarding the decode error, so a wrong-typed argument no longer runs the tool
-  on zero values. Omitted or `null` arguments still mean the empty object. Do
-  not add a `_ = json.Unmarshal` back, and do not add a compatibility shim: the
-  ADR's one-release grace covers only the retired `workspace_root` spellings.
+- **Tool schemas are closed, and mcptool enforces it.** Every `inputSchema` is
+  built by `obj()` in `internal/mcp/tools.go`, which sets
+  `additionalProperties: false` (org ADR-021 §10); build a new schema with
+  `obj()`, not a map literal. Registration (`mcptool.Add` / `AddNoArgs`, ADR-0002)
+  refuses a schema that is not closed or whose property names are not exactly
+  the argument struct's json names, and `TestTheSchemaContract`
+  (`tooltest.SchemaContract`) checks the listed schemas. Arguments are decoded by
+  mcptool before a handler runs: an undeclared name (case-sensitive), a wrong
+  type or a missing required argument is refused as `invalid_arguments` /
+  `missing_argument`, naming the argument, and the tool does nothing — the
+  argument-less tools included. Omitted or `null` arguments still mean the empty
+  object. Do not decode arguments by hand inside a handler.
 - **get_usage manual:** `internal/mcp/usage.md` is embedded and returned by the
   `get_usage` tool; the MCP `instructions` (sent when a client opens the
   server: `initialize`, or `server/discover` in the modern era) points clients to it.

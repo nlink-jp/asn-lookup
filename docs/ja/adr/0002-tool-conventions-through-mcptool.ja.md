@@ -20,7 +20,7 @@ asn-lookup は家系 A の参照実装である（mcptool の移行の方針 §7
 
 ## Decision
 
-mcptool の移行の方針（`docs/ja/migration.ja.md`、v0.1.2）に従う。このリポに当てはまる項目は次のとおり。
+mcptool の移行の方針（`docs/ja/migration.ja.md`、v0.1.3）に従う。このリポに当てはまる項目は次のとおり。
 
 1. **ツールの登録（方針 §2.1）**:
    - `lookup_ip` と `lookup_asn` は、引数の構造体を `mcptool.Add` で登録する。
@@ -45,17 +45,19 @@ mcptool の移行の方針（`docs/ja/migration.ja.md`、v0.1.2）に従う。�
    - `tooltest.ProbeMatrix` を 1 本と `tooltest.SchemaContract` を 1 本置く（パスを返すツールは無い）。
    - `strict_args_test.go` の所見（綴りの誤りを名前で断る、型の誤りを断る、大文字小文字の違いを断る、断られた呼び出しは何もしない）は、`tooltest` の上で残す。
    - 移行の前後は `mcpsnap` で突き合わせる（方針 §5）。
-5. **依存**: `github.com/nlink-jp/mcptool` v0.1.2 を足す（下限は v0.1.1。ADR-031 §3）。
+5. **依存**: `github.com/nlink-jp/mcptool` v0.1.3 を足す。試験は、クライアントの選択肢を渡してサーバを開く `tooltest.OpenWith` を使う（下限は v0.1.1。ADR-031 §3）。
 6. **版**: minor を上げる（v0.5.0）。
 
 ## 外から見える変化（mcptool の詳細設計 §5.1 から）
 
 - 値の JSON が 1 行になる（字下げをやめる）。値は同じ。
-- `<`・`>`・`&` が逃がされずに届く。たとえば AS の名前の `&` が `&` ではなく `&` で届く。
+- `<`・`>`・`&` が逃がされずに届く。たとえば AS の名前の `&` が `\u0026` ではなく `&` で届く。
 - 引数の誤りは、平文（`arguments: json: unknown field "…"`）ではなく、`{code, message, details}` の JSON になる。コードは `invalid_arguments`、`details.argument` に名前を入れる。文言は `unknown argument "…"`・`argument "…" must be …` になる。
 - 誤りが重なった呼び出しで、最初に返す誤りが変わりうる（未知 → 必須 → 型の順）。
 - 平文で返していた失敗は、上の表のコードの JSON になる。
 - 説明書（`usage.md`）の回復の表は、文言ではなくコードで引くように書き直す。
+
+これらの変化は 1 つのコミットにまとめる。どれも殻を mcptool に替えたことから生じ、ほかと切り離しては得られない。
 
 ## 見つけた不具合（移行で閉じる）
 
@@ -77,6 +79,6 @@ mcptool の移行の方針（`docs/ja/migration.ja.md`、v0.1.2）に従う。�
 ## References
 
 - 組織 ADR-031、ADR-030、ADR-021 §4
-- nlink-jp/mcptool v0.1.2: `docs/ja/migration.ja.md`、`docs/ja/design.ja.md` §5.1
+- nlink-jp/mcptool v0.1.3: `docs/ja/migration.ja.md`、`docs/ja/design.ja.md` §5.1
 - ADR-0001
 - issue nlink-jp/asn-lookup#2

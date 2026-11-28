@@ -22,7 +22,7 @@ asn-lookup is family A's reference migration (mcptool's migration policy §7).
 
 ## Decision
 
-This follows mcptool's migration policy (`docs/en/migration.md`, v0.1.2). What applies here:
+This follows mcptool's migration policy (`docs/en/migration.md`, v0.1.3). What applies here:
 
 1. **Registering tools (policy §2.1)**:
    - `lookup_ip` and `lookup_asn` are registered with their argument structs through `mcptool.Add`;
@@ -47,17 +47,19 @@ This follows mcptool's migration policy (`docs/en/migration.md`, v0.1.2). What a
    - one `tooltest.ProbeMatrix` and one `tooltest.SchemaContract` (no tool returns a path);
    - `strict_args_test.go`'s findings (a misspelt name refused by name, a wrong type refused, another case refused, a refused call doing nothing) are kept, on `tooltest`;
    - before and after are compared with `mcpsnap` (policy §5).
-5. **Dependency**: `github.com/nlink-jp/mcptool` v0.1.2 (the floor is v0.1.1, ADR-031 §3).
+5. **Dependency**: `github.com/nlink-jp/mcptool` v0.1.3, whose `tooltest.OpenWith` the tests use to open a server with client options (the floor is v0.1.1, ADR-031 §3).
 6. **Version**: a minor bump (v0.5.0).
 
 ## Changes clients will see (from mcptool's design §5.1)
 
 - A value's JSON is one line (no indentation); the value is the same.
-- `<`, `>` and `&` arrive unescaped — an AS name's `&` arrives as `&`, not `&`.
+- `<`, `>` and `&` arrive unescaped — an AS name's `&` arrives as `&`, not `\u0026`.
 - An argument error is `{code, message, details}` JSON instead of plain text (`arguments: json: unknown field "…"`): `invalid_arguments`, the name in `details.argument`, worded `unknown argument "…"` or `argument "…" must be …`.
 - With several problems in one call, the first one reported may change (unknown → missing → type).
 - The failures answered as plain text are the table's codes, as JSON.
 - The manual's (`usage.md`) recovery table is rewritten to be read by code, not by wording.
+
+These changes share one commit: each follows from swapping the shell for mcptool, and none can be had without the others.
 
 ## Defects found (closed by the migration)
 
@@ -79,6 +81,6 @@ This follows mcptool's migration policy (`docs/en/migration.md`, v0.1.2). What a
 ## References
 
 - Organization ADR-031, ADR-030, ADR-021 §4
-- nlink-jp/mcptool v0.1.2: `docs/en/migration.md`, `docs/en/design.md` §5.1
+- nlink-jp/mcptool v0.1.3: `docs/en/migration.md`, `docs/en/design.md` §5.1
 - ADR-0001
 - Issue nlink-jp/asn-lookup#2
