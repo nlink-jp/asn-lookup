@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/nlink-jp/mcptool"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/nlink-jp/mcp/client"
+	"github.com/nlink-jp/mcptool"
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/config"
