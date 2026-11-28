@@ -45,11 +45,13 @@ ASN → the IP prefixes it announces in IPinfo Lite.
 
 ## Arguments are strict
 
-Every tool refuses an argument it does not declare, naming it:
-`arguments: json: unknown field "offest"`. A wrong-typed argument is refused the
-same way. Nothing runs before the arguments decode, so a rejected call reads no
-database and downloads nothing — fix the name or the type and call again. This
-is the enforcing half of the closed schemas (org ADR-021 §4); a misspelt
+Every tool refuses an argument it does not declare, naming it, and an argument
+of the wrong type. Errors are JSON — `{"code": …, "message": …, "details": …}`
+— with the argument in `details.argument`: `{"code":"invalid_arguments",
+"message":"unknown argument \"offest\"","details":{"argument":"offest"}}`.
+Nothing runs before the arguments decode, so a rejected call reads no
+database and downloads nothing — fix the name or the type and call again.
+This is the enforcing half of the closed schemas (org ADR-021 §4); a misspelt
 `offset` used to be dropped, which made every page of a large AS come back as
 the first one.
 
@@ -65,12 +67,14 @@ nothing is silently dropped.
 
 ## Recovery table
 
-| Symptom (result text) | What it means | What to do |
+| Symptom (error `code`, or result) | What it means | What to do |
 |---|---|---|
-| `arguments: json: unknown field "…"` | An argument name this tool does not declare — usually a typo | Fix the spelling and call again; the named field is the offending one |
-| `arguments: json: cannot unmarshal …` | An argument of the wrong JSON type (an ASN must be a string, `limit`/`offset` integers) | Check the argument's type in the tool list above and call again |
-| `no local database …` | The index has not been built | Call `update_db` (needs a token) |
-| `no ipinfo token configured …` | `update_db` has no token | Ask the user to set `IPINFO_TOKEN` or `[ipinfo] token` |
+| `invalid_arguments` | An argument this tool does not declare (usually a typo), or one of the wrong JSON type (an ASN must be a string, `limit`/`offset` integers); `details.argument` names it | Fix that argument and call again |
+| `missing_argument`, `details.one_of` | Neither `ip` nor `ips` (`asn` nor `asns`) was given | Give one of the arguments named |
+| `no_database` | The index has not been built | Call `update_db` (needs a token) |
+| `database_error` | The index exists but cannot be read | Call `update_db` to rebuild it |
+| `no_token` | `update_db` has no token | Ask the user to set `IPINFO_TOKEN` or `[ipinfo] token` |
+| `update_failed` | `update_db` could not download or rebuild the database; the message says why | Retry later; the previous database is left as it was |
 | `lookup_asn` → `has_more:true` | More prefixes exist beyond this page | Re-request with `offset` advanced by `limit`; `prefix_count` is the total |
 | `lookup_asn` → the response is larger than you can hold | `limit` was too large for your context (or `0`) | Re-request with a smaller `limit` and page through |
 | `found:false`, `error:"invalid address"` | The input was not a valid IP | Fix the input |

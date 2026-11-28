@@ -91,7 +91,7 @@ func TestToolsOverTheProtocol(t *testing.T) {
 	if got := strings.Join(names, ","); got != "get_usage,lookup_ip,lookup_asn,update_db,db_status" {
 		t.Errorf("tools = %s", got)
 	}
-	if text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`); isErr || !strings.Contains(text, "15169") || !strings.Contains(text, `"found": true`) {
+	if text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`); isErr || !strings.Contains(text, "15169") || !strings.Contains(text, `"found":true`) {
 		t.Errorf("lookup_ip text = %s (isErr=%v)", text, isErr)
 	}
 	if text, _ := call(t, cl, "lookup_asn", `{"asn":"AS15169"}`); !strings.Contains(text, "8.8.8.0/24") {
@@ -104,15 +104,26 @@ func TestToolsOverTheProtocol(t *testing.T) {
 
 func TestToolsCallNoDBHint(t *testing.T) {
 	cl := open(t, newEngine(t, false)) // no DB file written
-	text, isErr := call(t, cl, "lookup_ip", `{"ip":"8.8.8.8"}`)
-	if !isErr || !strings.Contains(text, "update_db") {
-		t.Errorf("expected error result hinting update_db, got %s (isErr=%v)", text, isErr)
+	for _, tc := range [][2]string{{"lookup_ip", `{"ip":"8.8.8.8"}`}, {"lookup_asn", `{"asn":"AS15169"}`}, {"db_status", ``}} {
+		e := toolErr(t, cl, tc[0], tc[1])
+		if e.Code != CodeNoDatabase || !strings.Contains(e.Message, "update_db") {
+			t.Errorf("%s: %+v, want no_database hinting update_db", tc[0], e)
+		}
+	}
+}
+
+// update_db without a token is no_token, with today's message (ADR-0002).
+func TestUpdateWithoutATokenIsNoToken(t *testing.T) {
+	e := newEngine(t, false)
+	e.Cfg.Token = ""
+	if te := toolErr(t, open(t, e), "update_db", ""); te.Code != CodeNoToken || !strings.Contains(te.Message, "IPINFO_TOKEN") {
+		t.Errorf("%+v", te)
 	}
 }
 
 func TestToolUpdateThenStatus(t *testing.T) {
 	cl := open(t, newEngine(t, false))
-	if text, isErr := call(t, cl, "update_db", ""); isErr || !strings.Contains(text, `"updated": true`) {
+	if text, isErr := call(t, cl, "update_db", ""); isErr || !strings.Contains(text, `"updated":true`) {
 		t.Errorf("update_db text = %s (isErr=%v)", text, isErr)
 	}
 	if text, isErr := call(t, cl, "db_status", ""); isErr || !strings.Contains(text, `"records"`) {

@@ -8,10 +8,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nlink-jp/mcptool/serve"
 )
 
 // SIGINT and SIGTERM end the MCP server through its ctx, even while stdin is
-// open (server-migration §2); both are registered. Served on context.Background(), a signal
+// open (server-migration §2); both are registered (mcptool's serve.Run, ADR-0002). Served on context.Background(), a signal
 // killed the process instead, and this waits in vain.
 func TestASignalEndsTheMCPServer(t *testing.T) {
 	home := t.TempDir()
@@ -19,10 +21,10 @@ func TestASignalEndsTheMCPServer(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("XDG_CACHE_HOME", home)
 	defer func(orig func(context.Context, ...os.Signal) (context.Context, context.CancelFunc)) {
-		notifyContext = orig
-	}(notifyContext)
+		serve.NotifyContext = orig
+	}(serve.NotifyContext)
 	var registered []os.Signal
-	notifyContext = func(parent context.Context, sigs ...os.Signal) (context.Context, context.CancelFunc) {
+	serve.NotifyContext = func(parent context.Context, sigs ...os.Signal) (context.Context, context.CancelFunc) {
 		registered = sigs
 		ctx, cancel := context.WithCancel(parent)
 		go func() { time.Sleep(100 * time.Millisecond); cancel() }() // the signal arrives
@@ -30,8 +32,8 @@ func TestASignalEndsTheMCPServer(t *testing.T) {
 	}
 	inR, inW := io.Pipe()
 	defer func() { _ = inW.Close() }()
-	defer func(in io.Reader, out io.Writer) { mcpStdin, mcpStdout = in, out }(mcpStdin, mcpStdout)
-	mcpStdin, mcpStdout = inR, io.Discard
+	defer func(o serve.Options) { mcpServe = o }(mcpServe)
+	mcpServe = serve.Options{Stdin: inR, Stdout: io.Discard}
 	done := make(chan int, 1)
 	go func() { done <- cmdMCP(nil, "test") }()
 	select {

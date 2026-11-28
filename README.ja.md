@@ -10,8 +10,10 @@
 - **CLI + MCP**: 同一エンジンが対話 CLI と stdio MCP サーバー
   （`get_usage` / `lookup_ip` / `lookup_asn` / `update_db` / `db_status`）を駆動します。
 - **サードパーティ製の依存なし**: 標準ライブラリ（`net/netip` + 自前オンディスク索引）と、
-  MCP のプロトコルには、同じ規則で書かれた組織の共通モジュール
-  [nlink-jp/mcp](https://github.com/nlink-jp/mcp) だけを使います。MMDB リーダーも設定ライブラリも使いません。
+  MCP には、同じ規則で書かれた組織の共通モジュール
+  [nlink-jp/mcp](https://github.com/nlink-jp/mcp)（プロトコル）と
+  [nlink-jp/mcptool](https://github.com/nlink-jp/mcptool)（引数の読み取り・構造化されたエラー・起動）だけを使います。MMDB リーダーも設定ライブラリも使いません。
+- **構造化された MCP のエラー**: ツールの失敗は `{"code": …, "message": …, "details": …}` の JSON で、分岐に使えるコード（`invalid_arguments`・`missing_argument`・`no_database`・`no_token` など）を持ちます。一覧は `get_usage` の説明書にあります。
 
 > **データ:** IPinfo Lite（<https://ipinfo.io/lite>）、ライセンスは
 > [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。IPinfo への

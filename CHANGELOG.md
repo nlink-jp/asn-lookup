@@ -5,6 +5,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP tools run on the organization's tool-conventions module,
+  nlink-jp/mcptool** (ADR-0002, organization ADR-031): arguments are decoded
+  before a tool runs, errors are structured, and the server is run by
+  mcptool's `serve.Run`. What a client sees:
+  - **Errors are JSON with a code**: `{"code": …, "message": …, "details": …}`
+    in place of plain text. An unknown or wrong-typed argument is
+    `invalid_arguments` with the argument in `details.argument` (worded
+    `unknown argument "…"` / `argument "…" must be …`); neither `ip` nor `ips`
+    (`asn` nor `asns`) is `missing_argument` with `details.one_of`; the others
+    are `no_database`, `database_error`, `no_token` and `update_failed`. The
+    `get_usage` manual's recovery table is read by code.
+  - Results are JSON on one line (no indentation), and `<`, `>` and `&` arrive
+    unescaped (an AS name's `&` no longer arrives as `\u0026`). The values are
+    the same.
+  - With several problems in one call, the first one reported may change
+    (unknown → missing → type).
+
+### Fixed
+
+- The argument-name check did not follow embedded structs, so an embedded
+  field would have been refused as unknown (latent: no argument type embeds
+  one). mcptool's registration promotes embedded fields.
+
 ## [0.4.1] - 2026-11-28
 
 ### Fixed

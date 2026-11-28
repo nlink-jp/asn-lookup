@@ -1,15 +1,14 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
-	"reflect"
-	"strings"
+
+	"github.com/nlink-jp/mcptool"
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/engine"
@@ -40,71 +39,10 @@ func obj(props map[string]any, required ...string) map[string]any {
 	return s
 }
 
-// decodeArgs decodes a tool's arguments strictly: an argument the tool does not
-// declare is refused by name, and a malformed argument object is refused rather
-// than read as an empty one. Every tool decodes through here.
-//
-// obj() above is only the declared half of org ADR-021 §4 — what a
-// schema-checking client refuses before the call. This is the half that
-// actually refuses, and it is needed because not every client checks the
-// schema. The `_ = json.Unmarshal` this replaces discarded the decode error as
-// well as the unknown field, so both defects were silent in the same way: a
-// misspelt `limit` returned the default page of a tier-1 AS as if it were the
-// page asked for, and `{"asn": 15169}` ran as if no AS had been named.
-func decodeArgs(raw json.RawMessage, into any) error {
-	raw = bytes.TrimSpace(raw)
-	// Omitted or null arguments mean the empty object, not an error: a tool
-	// whose arguments are all optional is legitimately called with none.
-	if len(raw) == 0 || string(raw) == "null" {
-		raw = []byte("{}")
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(into); err != nil {
-		return errors.New("arguments: " + err.Error())
-	}
-	// encoding/json matches names case-insensitively, so "ASN" or "Limit"
-	// would reach asn and limit. The schema names them in lower case; refuse
-	// any other spelling by name (as cert-lookup and vpn-lookup do).
-	var names map[string]json.RawMessage
-	if json.Unmarshal(raw, &names) == nil {
-		declared := jsonNames(into)
-		for n := range names {
-			if !declared[n] {
-				return fmt.Errorf("arguments: json: unknown field %q", n)
-			}
-		}
-	}
-	return nil
-}
-
-// jsonNames lists the exact json names a decode target declares.
-func jsonNames(into any) map[string]bool {
-	out := map[string]bool{}
-	t := reflect.TypeOf(into)
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	if t.Kind() != reflect.Struct {
-		return out
-	}
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		name := f.Name
-		if tag, ok := f.Tag.Lookup("json"); ok {
-			if n, _, _ := strings.Cut(tag, ","); n != "" {
-				name = n
-			}
-		}
-		out[name] = true
-	}
-	return out
-}
-
 // toolsList returns the advertised tool set, in order, with JSON Schema for
-// each input. The protocol server registers it as is (server.go), and the
-// tests read it from here.
-func (s *server) toolsList() []map[string]any {
+// each input. register (below) adds them to the server in this order, and
+// the tests read them from here.
+func toolsList() []map[string]any {
 	strArray := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 	return []map[string]any{
 		{
@@ -145,33 +83,36 @@ func (s *server) toolsList() []map[string]any {
 	}
 }
 
-// toolsCall dispatches one call by tool name and builds its result.
-func (s *server) toolsCall(ctx context.Context, name string, args json.RawMessage) toolResult {
-	switch name {
-	case "get_usage":
-		// No arguments — which still means "none", not "any".
-		if err := decodeArgs(args, &struct{}{}); err != nil {
-			return textResult(true, err.Error())
-		}
-		return textResult(false, usageMarkdown)
-	case "lookup_ip":
-		return s.toolLookupIP(args)
-	case "lookup_asn":
-		return s.toolLookupASN(args)
-	case "update_db":
-		if err := decodeArgs(args, &struct{}{}); err != nil {
-			return textResult(true, err.Error())
-		}
-		return s.toolUpdate(ctx)
-	case "db_status":
-		if err := decodeArgs(args, &struct{}{}); err != nil {
-			return textResult(true, err.Error())
-		}
-		return s.toolStatus()
-	default:
-		// Not reached: the protocol layer refuses a tool it did not register.
-		return textResult(true, "unknown tool: "+name)
+// register adds every tool of toolsList to ms, in order, each with its
+// arguments decoded by mcptool before the handler runs (ADR-0002).
+func (s *server) register(ms *mcptool.Server) error {
+	handlers := map[string]func(t mcptool.Tool) error{
+		"get_usage": func(t mcptool.Tool) error {
+			return mcptool.AddNoArgs(ms, t, func(context.Context) (any, error) { return mcptool.Text(usageMarkdown), nil })
+		},
+		"lookup_ip":  func(t mcptool.Tool) error { return mcptool.Add(ms, t, s.toolLookupIP) },
+		"lookup_asn": func(t mcptool.Tool) error { return mcptool.Add(ms, t, s.toolLookupASN) },
+		"update_db":  func(t mcptool.Tool) error { return mcptool.AddNoArgs(ms, t, s.toolUpdate) },
+		"db_status": func(t mcptool.Tool) error {
+			return mcptool.AddNoArgs(ms, t, func(context.Context) (any, error) { return s.toolStatus() })
+		},
 	}
+	for _, def := range toolsList() {
+		name, _ := def["name"].(string)
+		desc, _ := def["description"].(string)
+		schema, err := json.Marshal(def["inputSchema"])
+		if err != nil {
+			return fmt.Errorf("tool %s: %w", name, err)
+		}
+		add, ok := handlers[name]
+		if !ok {
+			return fmt.Errorf("tool %s has no handler", name)
+		}
+		if err := add(mcptool.Tool{Name: name, Description: desc, InputSchema: schema}); err != nil {
+			return fmt.Errorf("tool %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // ipEntry embeds the found result so its fields inline into the JSON; when the
@@ -183,24 +124,23 @@ type ipEntry struct {
 	*asndb.IPResult
 }
 
-func (s *server) toolLookupIP(args json.RawMessage) toolResult {
-	var a struct {
-		IP  string   `json:"ip"`
-		IPs []string `json:"ips"`
-	}
-	if err := decodeArgs(args, &a); err != nil {
-		return textResult(true, err.Error())
-	}
+// lookupIPArgs are lookup_ip's arguments; their names are its schema's.
+type lookupIPArgs struct {
+	IP  string   `json:"ip"`
+	IPs []string `json:"ips"`
+}
+
+func (s *server) toolLookupIP(_ context.Context, a lookupIPArgs) (any, error) {
 	inputs := a.IPs
 	if a.IP != "" {
 		inputs = append([]string{a.IP}, inputs...)
 	}
 	if len(inputs) == 0 {
-		return textResult(true, "provide 'ip' (string) or 'ips' (array of strings)")
+		return nil, mcptool.NewError(mcptool.CodeMissingArgument, "provide 'ip' (string) or 'ips' (array of strings)").With("one_of", []string{"ip", "ips"})
 	}
 	db, err := s.database()
 	if err != nil {
-		return dbErrorResult(err)
+		return nil, dbError(err)
 	}
 	entries := make([]ipEntry, 0, len(inputs))
 	for _, in := range inputs {
@@ -216,7 +156,7 @@ func (s *server) toolLookupIP(args json.RawMessage) toolResult {
 			entries = append(entries, ipEntry{Input: in, Found: false})
 		}
 	}
-	return jsonResult(entries)
+	return entries, nil
 }
 
 // defaultASNPageSize bounds one page of prefixes. A tier-1 AS holds thousands,
@@ -242,23 +182,21 @@ type asnEntry struct {
 	Prefixes    []string `json:"prefixes"`
 }
 
-func (s *server) toolLookupASN(args json.RawMessage) toolResult {
-	var a struct {
-		ASN    string   `json:"asn"`
-		ASNs   []string `json:"asns"`
-		Limit  *int     `json:"limit"`
-		Offset *int     `json:"offset"`
-	}
-	if err := decodeArgs(args, &a); err != nil {
-		return textResult(true, err.Error())
-	}
+// lookupASNArgs are lookup_asn's arguments; their names are its schema's.
+type lookupASNArgs struct {
+	ASN    string   `json:"asn"`
+	ASNs   []string `json:"asns"`
+	Limit  *int     `json:"limit"`
+	Offset *int     `json:"offset"`
+}
 
+func (s *server) toolLookupASN(_ context.Context, a lookupASNArgs) (any, error) {
 	inputs := a.ASNs
 	if a.ASN != "" {
 		inputs = append([]string{a.ASN}, inputs...)
 	}
 	if len(inputs) == 0 {
-		return textResult(true, "provide 'asn' (string) or 'asns' (array of strings)")
+		return nil, mcptool.NewError(mcptool.CodeMissingArgument, "provide 'asn' (string) or 'asns' (array of strings)").With("one_of", []string{"asn", "asns"})
 	}
 	limit := defaultASNPageSize
 	if a.Limit != nil && *a.Limit >= 0 {
@@ -271,7 +209,7 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 
 	db, err := s.database()
 	if err != nil {
-		return dbErrorResult(err)
+		return nil, dbError(err)
 	}
 
 	entries := make([]asnEntry, 0, len(inputs))
@@ -304,7 +242,7 @@ func (s *server) toolLookupASN(args json.RawMessage) toolResult {
 		}
 		entries = append(entries, e)
 	}
-	return jsonResult(entries)
+	return entries, nil
 }
 
 func prefixStrings(ps []netip.Prefix) []string {
@@ -315,12 +253,16 @@ func prefixStrings(ps []netip.Prefix) []string {
 	return out
 }
 
-func (s *server) toolUpdate(ctx context.Context) toolResult {
+func (s *server) toolUpdate(ctx context.Context) (any, error) {
 	stats, skipped, err := s.e.Update(ctx)
 	if err != nil {
-		return textResult(true, "update failed: "+err.Error())
+		code := CodeUpdateFailed
+		if errors.Is(err, engine.ErrNoToken) {
+			code = CodeNoToken
+		}
+		return nil, mcptool.NewError(code, "update failed: "+err.Error())
 	}
-	return jsonResult(map[string]any{
+	return map[string]any{
 		"updated":   true,
 		"generated": stats.Generated,
 		"records":   stats.RecordCount,
@@ -328,17 +270,17 @@ func (s *server) toolUpdate(ctx context.Context) toolResult {
 		"v6":        stats.V6Count,
 		"skipped":   skipped,
 		"path":      s.e.Cfg.DBPath,
-	})
+	}, nil
 }
 
-func (s *server) toolStatus() toolResult {
+func (s *server) toolStatus() (any, error) {
 	db, err := s.database()
 	if err != nil {
-		return dbErrorResult(err)
+		return nil, dbError(err)
 	}
 	st := db.Stats()
 	stale, age := s.e.IsStale(st.Generated)
-	return jsonResult(map[string]any{
+	return map[string]any{
 		"generated": st.Generated,
 		"records":   st.RecordCount,
 		"v4":        st.V4Count,
@@ -346,24 +288,14 @@ func (s *server) toolStatus() toolResult {
 		"stale":     stale,
 		"age_days":  int(age.Hours() / 24),
 		"path":      s.e.Cfg.DBPath,
-	})
+	}, nil
 }
 
-// jsonResult marshals v into a non-error text result.
-func jsonResult(v any) toolResult {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return textResult(true, "encode result: "+err.Error())
-	}
-	return textResult(false, string(b))
-}
-
-// dbErrorResult renders a database load error, adding an update hint when no
-// database exists yet.
-func dbErrorResult(err error) toolResult {
-	msg := err.Error()
+// dbError is a database load error as a tool error, with an update hint when
+// no database exists yet.
+func dbError(err error) error {
 	if errors.Is(err, engine.ErrNoDB) {
-		msg += "\nCall the update_db tool to download the IPinfo Lite database."
+		return mcptool.NewError(CodeNoDatabase, err.Error()+"\nCall the update_db tool to download the IPinfo Lite database.")
 	}
-	return textResult(true, msg)
+	return mcptool.NewError(CodeDatabaseError, err.Error())
 }

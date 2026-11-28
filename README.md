@@ -11,9 +11,15 @@ can investigate IP addresses without hammering the ipinfo API.
 - **CLI + MCP**: the same engine drives an interactive CLI and a stdio MCP server
   (`get_usage`, `lookup_ip`, `lookup_asn`, `update_db`, `db_status`).
 - **No third-party dependencies**: the standard library (`net/netip` + a
-  self-contained on-disk index) and, for the MCP protocol, the organization's
-  shared module [nlink-jp/mcp](https://github.com/nlink-jp/mcp), written on the
-  same rule. No MMDB reader, no config libraries.
+  self-contained on-disk index) and, for MCP, the organization's shared
+  modules [nlink-jp/mcp](https://github.com/nlink-jp/mcp) (the protocol) and
+  [nlink-jp/mcptool](https://github.com/nlink-jp/mcptool) (argument decoding,
+  structured errors, serving), written on the same rule. No MMDB reader, no
+  config libraries.
+- **Structured MCP errors**: a tool failure is JSON —
+  `{"code": …, "message": …, "details": …}` — with a code to branch on
+  (`invalid_arguments`, `missing_argument`, `no_database`, `no_token`, …); the
+  `get_usage` manual lists them.
 
 > **Data:** IPinfo Lite (<https://ipinfo.io/lite>), licensed
 > [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Attribution to

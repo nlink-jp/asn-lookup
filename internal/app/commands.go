@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/netip"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
+
+	"github.com/nlink-jp/mcptool/serve"
 
 	"github.com/nlink-jp/asn-lookup/internal/asndb"
 	"github.com/nlink-jp/asn-lookup/internal/config"
@@ -230,13 +230,10 @@ func existsLabel(path string) string {
 
 // ---- mcp ------------------------------------------------------------------
 
-// notifyContext is signal.NotifyContext, and mcpStdin and mcpStdout the
-// process's streams; tests stand in for them.
-var (
-	notifyContext           = signal.NotifyContext
-	mcpStdin      io.Reader = os.Stdin
-	mcpStdout     io.Writer = os.Stdout
-)
+// mcpServe is the MCP server's streams and options (serve.Options): nil
+// streams are the process's. Tests stand in for them; signals are
+// serve.NotifyContext's.
+var mcpServe serve.Options
 
 func cmdMCP(args []string, version string) int {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
@@ -250,13 +247,15 @@ func cmdMCP(args []string, version string) int {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
-	// SIGINT and SIGTERM cancel the server's ctx: it returns at once and the
-	// cleanup defers run (an update_db cut short removes its temporary file).
-	// With context.Background() a signal ended the process with the file left
-	// beside the database.
-	ctx, stop := notifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := mcp.Serve(ctx, e, version, mcpStdin, mcpStdout); err != nil {
+	s, err := mcp.New(e, version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mcp: %v\n", err)
+		return 1
+	}
+	// serve.Run cancels the server's ctx on SIGINT and SIGTERM: it returns at
+	// once and the cleanup defers run (an update_db cut short removes its
+	// temporary file).
+	if err := serve.Run(context.Background(), s, mcpServe); err != nil {
 		fmt.Fprintf(os.Stderr, "mcp: %v\n", err)
 		return 1
 	}
