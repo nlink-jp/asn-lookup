@@ -8,6 +8,7 @@ package ipinfo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,6 +52,12 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL, token string) (io.ReadC
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		// *url.Error carries the whole request URL, token included: keep only
+		// its cause (wrapped, so a cancellation still reads as one).
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
 		return nil, fmt.Errorf("download %s: %w", Redact(rawURL), err)
 	}
 	if resp.StatusCode != http.StatusOK {

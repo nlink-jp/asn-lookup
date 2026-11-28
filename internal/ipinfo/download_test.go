@@ -2,6 +2,7 @@ package ipinfo
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -75,5 +76,32 @@ func TestFetchErrorRedactsToken(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "supersecret") {
 		t.Errorf("error leaked token: %v", err)
+	}
+}
+
+// A transport failure (here, a refused local connection) must not carry the
+// token: *url.Error holds the whole request URL, query included, and it went
+// into update_db's message and the CLI's stderr as it was.
+func TestATransportErrorDoesNotCarryTheToken(t *testing.T) {
+	f := NewHTTPFetcher()
+	_, err := f.Fetch(context.Background(), "http://127.0.0.1:9/lite.csv.gz", "secret-tok-123")
+	if err == nil {
+		t.Fatal("a refused connection returned no error")
+	}
+	if strings.Contains(err.Error(), "secret-tok-123") {
+		t.Errorf("the token leaked: %v", err)
+	}
+	if !strings.Contains(err.Error(), "token=REDACTED") && !strings.Contains(err.Error(), "127.0.0.1:9") {
+		t.Errorf("the error no longer says where: %v", err)
+	}
+}
+
+// A cancelled download still reads as a cancellation.
+func TestACancelledFetchIsStillACancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewHTTPFetcher().Fetch(ctx, "http://127.0.0.1:9/lite.csv.gz", "secret-tok-123")
+	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "secret-tok-123") {
+		t.Errorf("err = %v", err)
 	}
 }
