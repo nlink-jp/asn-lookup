@@ -216,12 +216,12 @@ func (s *server) toolLookupASN(_ context.Context, a lookupASNArgs) (any, error) 
 	for _, in := range inputs {
 		num, ok := asndb.ParseASN(in)
 		if !ok {
-			entries = append(entries, asnEntry{Input: in, Found: false})
+			entries = append(entries, asnEntry{Input: in, Found: false, Prefixes: []string{}})
 			continue
 		}
 		res, found := db.LookupASN(num)
 		if !found {
-			entries = append(entries, asnEntry{Input: in, Found: false, ASN: num})
+			entries = append(entries, asnEntry{Input: in, Found: false, ASN: num, Prefixes: []string{}})
 			continue
 		}
 		v4, v6 := res.FamilyCounts()

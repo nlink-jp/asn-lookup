@@ -29,6 +29,9 @@ All notable changes to this project are documented here. The format follows
 - The argument-name check did not follow embedded structs, so an embedded
   field would have been refused as unknown (latent: no argument type embeds
   one). mcptool's registration promotes embedded fields.
+- `lookup_asn` answered `"prefixes": null` for an ASN it did not find (or
+  could not parse). It now answers `"prefixes": []`, as for a found one, so
+  `prefixes` is always an array.
 
 ## [0.4.1] - 2026-11-28
 

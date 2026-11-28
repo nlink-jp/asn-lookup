@@ -63,6 +63,7 @@ This follows mcptool's migration policy (`docs/en/migration.md`, v0.1.2). What a
 
 - `jsonNames` did not follow embedded structs: an embedded field used in arguments would have been refused as unknown (latent; today's argument types embed nothing). mcptool's registration promotes embedded fields.
 - Errors had no codes: callers could only tell them apart by wording.
+- `lookup_asn` answered `"prefixes": null` for an ASN it did not find (or could not parse), where a found one has an array. It now answers `[]` (visible; fixed in its own commit).
 
 ## Consequences
 

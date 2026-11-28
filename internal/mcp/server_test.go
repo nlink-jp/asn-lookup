@@ -309,3 +309,21 @@ func TestAFailedDownloadIsUpdateFailed(t *testing.T) {
 		t.Errorf("%+v", te)
 	}
 }
+
+// An ASN that is not found answers prefixes:[] like a found one, so a client
+// reading `prefixes` always finds an array (usage.md: "always inline").
+func TestANotFoundASNAnswersAnEmptyPrefixList(t *testing.T) {
+	text, isErr := call(t, open(t, newEngine(t, true)), "lookup_asn", `{"asns":["AS64512","not-an-asn"]}`)
+	if isErr {
+		t.Fatal(text)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(text), &entries); err != nil || len(entries) != 2 {
+		t.Fatalf("%s: %v", text, err)
+	}
+	for _, e := range entries {
+		if string(e["prefixes"]) != "[]" {
+			t.Errorf("prefixes = %s in %s", e["prefixes"], text)
+		}
+	}
+}
